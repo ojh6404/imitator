@@ -1,0 +1,2 @@
+# imitator
+Imitation Learning Library
