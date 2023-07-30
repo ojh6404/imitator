@@ -36,6 +36,7 @@ if __name__ == "__main__":
     batch_size = args.batch_size
     num_epochs = args.num_epochs
     gradient_steps_per_epoch = 100
+    seq_length = config.network.policy.rnn.seq_length
 
     dataset = SequenceDataset(
         hdf5_path=args.dataset,
@@ -43,7 +44,7 @@ if __name__ == "__main__":
         dataset_keys=dataset_keys,  # keys we want to appear in batches
         load_next_obs=True,
         frame_stack=1,
-        seq_length=10,  # length-10 temporal sequences
+        seq_length=seq_length,  # length-10 temporal sequences
         pad_frame_stack=True,
         pad_seq_length=True,  # pad last obs per trajectory to ensure all sequences are sampled
         get_pad_mask=False,
