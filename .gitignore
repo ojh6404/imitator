@@ -1,0 +1,12 @@
+.DS_Store
+.idea
+*.log
+tmp/
+
+*.hdf5
+data/
+runs/
+
+*.pyc
+
+*.pth
