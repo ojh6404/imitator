@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
+import os
 from abc import abstractmethod
-import textwrap
 import numpy as np
 from collections import OrderedDict
 
@@ -19,7 +19,8 @@ from torchvision import transforms
 
 from imitator.models.base_nets import MLP, RNN
 import imitator.utils.tensor_utils as TensorUtils
-from imitator.utils.obs_utils import ObservationEncoder, ImageModality, FloatVectorModality
+from imitator.utils.obs_utils import ObservationEncoder, ImageModality, FloatVectorModality, get_normalize_params
+from imitator.utils import file_utils as FileUtils
 
 
 """
@@ -91,25 +92,26 @@ class RNNActor(Actor):
         self.rnn_hidden_dim = cfg.network.policy.rnn.rnn_hidden_dim
         self.rnn_input_dim = sum(
             [self.obs[key]["obs_encoder"]["output_dim"] for key in self.obs.keys()]
-        )
+        ) # sum of all obs_encoder output dims
         self.rnn_kwargs = cfg.network.policy.rnn.get("kwargs", {})
         self.action_dim = cfg.action.dim
 
-        print("action dim: ", self.action_dim)
-
         self.normalize = True
         if self.normalize:
-            self.normalize_cfg = edict(yaml.safe_load(open("./config/normalize.yaml", "r")))
-            action_max = np.array(self.normalize_cfg.action.max).astype(np.float32)
-            action_min = np.array(self.normalize_cfg.action.min).astype(np.float32)
-            action_mean = (action_max + action_min) / 2.0
-            action_std = (action_max - action_min) / 2.0
+            self.normalize_cfg = edict(yaml.safe_load(open(os.path.join(FileUtils.get_config_folder(), "normalize.yaml"), "r")))
+            action_mean, action_std = get_normalize_params(self.normalize_cfg.action.min, self.normalize_cfg.action.max)
+            # action_max = np.array(self.normalize_cfg.action.max).astype(np.float32)
+            # action_min = np.array(self.normalize_cfg.action.min).astype(np.float32)
+            # action_mean = (action_max + action_min) / 2.0
+            # action_std = (action_max - action_min) / 2.0
+        else:
+            action_mean = np.zeros(self.action_dim).astype(np.float32)
+            action_std = np.ones(self.action_dim).astype(np.float32)
 
         self.action_modality = eval(cfg.action.modality)(name="action",shape=self.action_dim, mean=action_mean, std=action_std)
         self.mlp_layer_dims = cfg.network.policy.mlp_layer_dims
         self.mlp_activation = eval("nn." + cfg.network.policy.get("mlp_activation", "ReLU"))
 
-        self.nets = nn.ModuleDict()
         self._build_network()
 
 
@@ -118,6 +120,7 @@ class RNNActor(Actor):
         Build the network.
         inputs passed to obs_encoder -> rnn -> mlp_decoder
         """
+        self.nets = nn.ModuleDict()
         self.nets["obs_encoder"] = ObservationEncoder(self.obs)
         self.nets["mlp_decoder"] = MLP(
             input_dim=self.rnn_hidden_dim,

@@ -13,6 +13,13 @@ from imitator.models.base_nets import *
 
 from typing import Union, List, Tuple, Dict, Any, Optional
 
+# fucntion that get mean and std from max and min
+def get_normalize_params(min_val, max_val):
+    min_array = np.array(min_val).astype(np.float32)
+    max_array = np.array(max_val).astype(np.float32)
+    mean = (min_array + max_array) / 2.0
+    std = (max_array - min_array) / 2.0
+    return mean, std
 
 class Modality(ABC, nn.Module):
     def __init__(self, name: str, shape: Union[int, List[int], Tuple[int]], mean: Union[float, List[float], np.ndarray, torch.Tensor] = 0.0, std: Union[float, List[float], np.ndarray, torch.Tensor] = 1.0)-> None:

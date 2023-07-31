@@ -9,10 +9,8 @@ from tqdm import tqdm
 from contextlib import contextmanager
 
 import torch.utils.data
-
 import imitator.utils.file_utils as FileUtils
 import imitator.utils.tensor_utils as TensorUtils
-
 
 class SequenceDataset(torch.utils.data.Dataset):
     def __init__(

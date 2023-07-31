@@ -31,7 +31,7 @@ obs: # input into policy
       output_dim: 4
       layer_dims: null
       activation: "ReLU" # [ReLU, Tanh...]
-action:
+actions:
   modality: "FloatVectorModality"
   topic_name: "/eus_imitation/robot_action"
   msg_type: "Float32MultiArrayStamped"
@@ -56,48 +56,3 @@ network:
       weight:
         l1: 0.0
         l2: 1.0
-
-
-dataset:
-  rosbag:
-    message_filters:
-      slop: 0.1
-      queue_size: 1000
-  data:
-    env_args:
-      env_name: "Stack"
-      type: "env_version"
-      robot: "PR2"
-      camera_depths: False
-      env_kwargs:
-        has_renderer: False
-        has_offscreen_renderer: False
-        ignore_done: True
-        use_camera_obs: True
-        control_freq: 10
-        controller_configs:
-          type: "IK"
-    obs: # input into policy
-      image:
-        modality: "ImageModality"
-        topic_name: "/kinect_head/rgb/image_rect_color/compressed"
-        msg_type: "CompressedImage"
-        obs_encoder:
-          pretrained: False
-          input_dim: [224, 224, 3]
-          output_dim: 16 # latent dim
-          has_decoder: False
-      robot_ee_pos:
-        modality: "FloatVectorModality"
-        topic_name: "/eus_imitation/robot_state"
-        msg_type: "Float32MultiArrayStamped"
-        obs_encoder:
-          input_dim: 4
-          output_dim: 4
-          layer_dims: null
-          activation: "ReLU" # [ReLU, Tanh...]
-    actions:
-      modality: "FloatVectorModality"
-      topic_name: "/eus_imitation/robot_action"
-      msg_type: "Float32MultiArrayStamped"
-      dim: 4
