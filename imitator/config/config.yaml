@@ -5,23 +5,29 @@ control:
   message_filters:
     slop: 0.1
     queue_size: 1000
-  # # conrol_type: collector
+
+
+
+
+  #
+                    # "robot0_eef_pos",
+                    # "robot0_eef_quat",
+                    # "robot0_gripper_qpos",
+                    # "object"
 
 
 obs: # input into policy
-  image:
-    modality: "ImageModality"
-    topic_name: "/kinect_head/rgb/image_rect_color/compressed"
-    msg_type: "CompressedImage"
+  robot0_eef_pos:
+    modality: "FloatVectorModality"
+    topic_name: "/eus_imitation/robot_state"
+    msg_type: "Float32MultiArrayStamped"
     obs_encoder:
       normalize: True
-      model: "VariationalAutoEncoder"
-      model_path: "./vae_model.pth"
-      pretrained: True
-      input_dim: [224, 224, 3]
-      output_dim: 16
-      has_decoder: True
-  robot_ee_pos:
+      input_dim: 3
+      output_dim: 3
+      layer_dims: null
+      activation: "ReLU" # [ReLU, Tanh...]
+  robot0_eef_quat:
     modality: "FloatVectorModality"
     topic_name: "/eus_imitation/robot_state"
     msg_type: "Float32MultiArrayStamped"
@@ -31,11 +37,31 @@ obs: # input into policy
       output_dim: 4
       layer_dims: null
       activation: "ReLU" # [ReLU, Tanh...]
+  robot0_gripper_qpos:
+    modality: "FloatVectorModality"
+    topic_name: "/eus_imitation/robot_state"
+    msg_type: "Float32MultiArrayStamped"
+    obs_encoder:
+      normalize: True
+      input_dim: 2
+      output_dim: 2
+      layer_dims: null
+      activation: "ReLU" # [ReLU, Tanh...]
+  object:
+    modality: "FloatVectorModality"
+    topic_name: "/eus_imitation/robot_state"
+    msg_type: "Float32MultiArrayStamped"
+    obs_encoder:
+      normalize: True
+      input_dim: 10
+      output_dim: 10
+      layer_dims: null
+      activation: "ReLU" # [ReLU, Tanh...]
 action:
   modality: "FloatVectorModality"
   topic_name: "/eus_imitation/robot_action"
   msg_type: "Float32MultiArrayStamped"
-  dim: 4
+  dim: 7
 
 network:
   policy:

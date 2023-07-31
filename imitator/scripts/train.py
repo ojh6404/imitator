@@ -31,8 +31,9 @@ if __name__ == "__main__":
     with open(args.config, "r") as f:
         config = edict(yaml.safe_load(f))
 
-    obs_keys = ["image", "robot_ee_pos"]
-    dataset_keys = ["action"]
+    obs_keys = list(config.obs.keys())
+    print(obs_keys)
+    dataset_keys = ["actions"]
     batch_size = args.batch_size
     num_epochs = args.num_epochs
     gradient_steps_per_epoch = 100
@@ -48,7 +49,7 @@ if __name__ == "__main__":
         pad_seq_length=True,  # pad last obs per trajectory to ensure all sequences are sampled
         get_pad_mask=False,
         goal_mode=None,
-        hdf5_cache_mode=None,  # cache dataset in memory to avoid repeated file i/o
+        hdf5_cache_mode="all",  # cache dataset in memory to avoid repeated file i/o
         hdf5_use_swmr=True,
     )
     data_loader = DataLoader(
@@ -102,13 +103,16 @@ if __name__ == "__main__":
                 # data loader ran out of batches - reset and yield first batch
                 data_loader_iter = iter(data_loader)
                 batch = next(data_loader_iter)
-            batch = TensorUtils.to_device(batch, device)
+            batch = TensorUtils.to_float(TensorUtils.to_device(batch, device))
 
             # calculate time and loss
             start_time = time.time()
             prediction = model(batch["obs"])  # [B, T, D]
             end_time = time.time()
-            action = (batch["action"] - action_mean) / action_std
+            action = (batch["actions"] - action_mean) / action_std
+
+            # print("prediction: ", prediction.shape)
+            # print("action: ", action.shape)
 
             loss = nn.MSELoss()(prediction, action)
 
@@ -183,14 +187,14 @@ if __name__ == "__main__":
 
     random_batch = TensorUtils.to_device(next(data_loader_iter), device)
 
-    actions_of_first_batch = random_batch["action"][0]  # [T, D]
+    actions_of_first_batch = random_batch["actions"][0]  # [T, D]
     print("actions_of_first_batch shape: ", actions_of_first_batch.shape)  # [T, D]
 
     # testing
     model.eval()
     with torch.no_grad():
         prediction = model(random_batch["obs"])
-        action = random_batch["action"]
+        action = random_batch["actions"]
 
     prediction_of_first_batch = prediction[0]  # [T, D]
     print(
