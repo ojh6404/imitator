@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
-
 import os
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 import numpy as np
 from collections import OrderedDict
 
 from typing import Dict, Optional, Tuple, Union, List
 import yaml
 from easydict import EasyDict as edict
+from omegaconf import OmegaConf
 
 import torch
 import torch.nn as nn
@@ -29,10 +28,23 @@ flow : ObservationEncoder -> ActorCore[MLP, RNN, ...] -> MLPDecoder
 """
 
 
-class Actor(nn.Module):
+class Actor(ABC, nn.Module):
     """
     Base class for actor networks.
     """
+    def __init__(self, cfg: Dict) -> None:
+        super(Actor, self).__init__()
+        self.cfg = cfg
+        self.policy_type = cfg.network.policy.model
+        self.action_dim = cfg.actions.dim
+        if cfg.actions.normalize:
+            action_mean, action_std = get_normalize_params(cfg.actions.min, cfg.actions.max)
+        else:
+            action_mean, action_std = 0.0, 1.0
+        self.action_modality = eval(cfg.actions.modality)(name="actions",shape=cfg.actions.dim, mean=action_mean, std=action_std)
+
+        self.nets = nn.ModuleDict()
+
 
     @abstractmethod
     def _build_network(self):
@@ -41,76 +53,69 @@ class Actor(nn.Module):
 
 class MLPActor(Actor):
     def __init__(self, cfg: Dict) -> None:
-        super(MLPActor, self).__init__()
-        self.cfg = cfg
-        self.obs = cfg.obs
-        self.policy_type = cfg.policy.type
+        super(MLPActor, self).__init__(cfg)
+        self.mlp_input_dim = sum(
+            [cfg.obs[key].obs_encoder.output_dim for key in cfg.obs.keys()]
+        ) # sum of all obs_encoder output dims
+        self.mlp_kwargs = cfg.network.policy.get("kwargs", {})
+        self.mlp_layer_dims = cfg.network.policy.mlp_layer_dims
+        self.mlp_activation = eval("nn." + cfg.network.policy.get("mlp_activation", "ReLU"))
 
-        self.action_dim = cfg.action.dim
-        self.mlp_layer_dims = cfg.policy.mlp_layer_dims
-        self.mlp_activation = eval("nn." + cfg.policy.get("mlp_activation", "ReLU"))
-
-        self.rnn_hidden_dim = cfg.policy.rnn.rnn_hidden_dim
-
-        self.nets = nn.ModuleDict()
+        self._build_network()
 
     def _build_network(self) -> None:
         """
         Build the network.
         inputs passed to obs_encoder -> rnn -> mlp_decoder
         """
-        self.nets["obs_encoder"] = ObservationEncoder(self.obs)
+
+        self.nets["obs_encoder"] = ObservationEncoder(self.cfg.obs)
         self.nets["mlp_decoder"] = MLP(
-            input_dim=self.rnn_hidden_dim,
+            input_dim=self.mlp_input_dim,
             layer_dims=self.mlp_layer_dims,
             output_dim=self.action_dim,
             activation=self.mlp_activation,
         )
 
-    def forward(
-        self,
-        obs_dict: Dict[str, torch.Tensor],
-    ):
+    def forward(self, obs_dict: Dict[str, torch.Tensor],unnormalize: bool = False,) -> torch.Tensor:
         """
         obs_dict is expected to be a dictionary with keys of self.obs_keys
         like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
         """
         obs_latents = self.nets["obs_encoder"](obs_dict)
-        action = self.nets["mlp_decoder"](obs_latents)
-        return action
+        outputs = self.nets["mlp_decoder"](obs_latents)
+
+        if unnormalize:
+            outputs = self.action_modality.unprocess_obs(outputs)
+        return outputs
+
+    def forward_step(
+            self, obs_dict: Dict[str, torch.Tensor], unnormalize: bool = False
+    ) -> torch.Tensor:
+        """
+        obs_dict is expected to be a dictionary with keys of self.obs_keys
+        like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
+        """
+        outputs = self.forward(obs_dict, unnormalize=unnormalize)
+        return outputs
 
 
 class RNNActor(Actor):
     def __init__(self, cfg: Dict) -> None:
-        super(RNNActor, self).__init__()
-        self.cfg = cfg
-        self.obs = cfg.obs
-
-        self.policy_type = cfg.network.policy.model
+        super(RNNActor, self).__init__(cfg)
         self.rnn_type = cfg.network.policy.rnn.type
         self.rnn_num_layers = cfg.network.policy.rnn.rnn_num_layers
         self.rnn_hidden_dim = cfg.network.policy.rnn.rnn_hidden_dim
         self.rnn_input_dim = sum(
-            [self.obs[key]["obs_encoder"]["output_dim"] for key in self.obs.keys()]
+            [cfg.obs[key].obs_encoder.output_dim for key in cfg.obs.keys()]
         ) # sum of all obs_encoder output dims
         self.rnn_kwargs = cfg.network.policy.rnn.get("kwargs", {})
-        self.action_dim = cfg.action.dim
 
-        self.normalize = True
-        if self.normalize:
-            self.normalize_cfg = edict(yaml.safe_load(open(os.path.join(FileUtils.get_config_folder(), "normalize.yaml"), "r")))
-            action_mean, action_std = get_normalize_params(self.normalize_cfg.action.min, self.normalize_cfg.action.max)
-            # action_max = np.array(self.normalize_cfg.action.max).astype(np.float32)
-            # action_min = np.array(self.normalize_cfg.action.min).astype(np.float32)
-            # action_mean = (action_max + action_min) / 2.0
-            # action_std = (action_max - action_min) / 2.0
-        else:
-            action_mean = np.zeros(self.action_dim).astype(np.float32)
-            action_std = np.ones(self.action_dim).astype(np.float32)
-
-        self.action_modality = eval(cfg.action.modality)(name="action",shape=self.action_dim, mean=action_mean, std=action_std)
+        # for rnn decoder
         self.mlp_layer_dims = cfg.network.policy.mlp_layer_dims
         self.mlp_activation = eval("nn." + cfg.network.policy.get("mlp_activation", "ReLU"))
+
+        self.freeze = cfg.network.policy.get("freeze", True)
 
         self._build_network()
 
@@ -120,8 +125,7 @@ class RNNActor(Actor):
         Build the network.
         inputs passed to obs_encoder -> rnn -> mlp_decoder
         """
-        self.nets = nn.ModuleDict()
-        self.nets["obs_encoder"] = ObservationEncoder(self.obs)
+        self.nets["obs_encoder"] = ObservationEncoder(self.cfg.obs)
         self.nets["mlp_decoder"] = MLP(
             input_dim=self.rnn_hidden_dim,
             layer_dims=self.mlp_layer_dims,
@@ -136,6 +140,8 @@ class RNNActor(Actor):
             rnn_kwargs=self.rnn_kwargs,
             per_step_net=self.nets["mlp_decoder"],
         )
+
+
 
     def get_rnn_init_state(self, batch_size: int, device: torch.device) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         return self.nets["rnn"].get_rnn_init_state(batch_size, device)
@@ -172,10 +178,10 @@ class RNNActor(Actor):
         like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
         """
         obs_latents = self.nets["obs_encoder"](obs_dict)
-        output, rnn_state = self.nets["rnn"].forward_step(obs_latents, rnn_state)
+        outputs, rnn_state = self.nets["rnn"].forward_step(obs_latents, rnn_state)
         if unnormalize:
-            output = self.action_modality.unprocess_obs(output)
-        return output, rnn_state
+            outputs = self.action_modality.unprocess_obs(outputs)
+        return outputs, rnn_state
 
 
 class TransformerActor(Actor):
@@ -187,50 +193,3 @@ class TransformerActor(Actor):
         pass # TODO
 
 
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, required=True)
-    parser.add_argument("--dataset", type=str, required=True)
-    args = parser.parse_args()
-
-    with open(args.config, "r") as f:
-        actor_cfg = edict(yaml.safe_load(f)).actor
-
-    from imitator.utils.datasets import SequenceDataset
-    from torch.utils.data import DataLoader
-
-    obs_keys = ["image", "robot_ee_pos"]
-    dataset_keys = ["action"]
-    dataset = SequenceDataset(
-        hdf5_path=args.dataset,
-        obs_keys=obs_keys,  # observations we want to appear in batches
-        dataset_keys=dataset_keys,  # keys we want to appear in batches
-        load_next_obs=True,
-        frame_stack=1,
-        seq_length=10,  # length-10 temporal sequences
-        pad_frame_stack=True,
-        pad_seq_length=True,  # pad last obs per trajectory to ensure all sequences are sampled
-        get_pad_mask=False,
-        goal_mode=None,
-        # hdf5_cache_mode="all",  # cache dataset in memory to avoid repeated file i/o
-        hdf5_cache_mode=None,  # cache dataset in memory to avoid repeated file i/o
-        hdf5_use_swmr=True,
-    )
-
-    test_obs = dataset[0]["obs"]  # [T, ...]
-
-    test_obs = TensorUtils.to_device(test_obs, "cuda:0")
-    test_obs = TensorUtils.to_batch(test_obs)  # [B, T, ...]
-
-    # test actor
-    actor = RNNActor(actor_cfg)
-
-    actor.to("cuda:0")
-
-    output = actor(test_obs)  # [B, T, D]
-
-    input("test")
-
-    del dataset

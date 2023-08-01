@@ -14,25 +14,36 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
 import imitator.utils.tensor_utils as TensorUtils
+import imitator.utils.file_utils as FileUtils
 from imitator.utils.datasets import SequenceDataset
 from imitator.models.base_nets import AutoEncoder, VariationalAutoEncoder
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--dataset", type=str, default="data/dataset.hdf5")
+    parser.add_argument("-pn", "--project_name", type=str)
+    parser.add_argument("-d", "--dataset", type=str)
     parser.add_argument("-e", "--num_epochs", type=int, default=3000)
     parser.add_argument("-b", "--batch_size", type=int, default=128)
     parser.add_argument("-m", "--model", type=str, default="ae")
     args = parser.parse_args()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    obs_keys = ["image"]
-    dataset_keys = ["action"]
+    hdf5_path = (
+        args.dataset
+        if args.dataset
+        else os.path.join(
+            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
+        )
+    )
+    # obs_key = ["image"]
+    obs_key = "agentview_image"
+
+    config = FileUtils.get_config_from_project_name(args.project_name)
 
     dataset = SequenceDataset(
-        hdf5_path=args.dataset,
-        obs_keys=obs_keys,  # observations we want to appear in batches
-        dataset_keys=dataset_keys,  # keys we want to appear in batches
+        hdf5_path=hdf5_path,
+        obs_keys=[obs_key],  # observations we want to appear in batches
+        dataset_keys=config.dataset.dataset_keys,
         load_next_obs=True,
         frame_stack=1,
         seq_length=1,  # length-10 temporal sequences
@@ -56,17 +67,17 @@ if __name__ == "__main__":
 
     if args.model == "ae":
         model = AutoEncoder(
-            input_size=(224, 224),
-            input_channel=3,
-            latent_dim=16,
+            input_size=config.obs[obs_key].obs_encoder.input_dim[:2],  # [224, 224]
+            input_channel=config.obs[obs_key].obs_encoder.input_dim[2],
+            latent_dim=config.obs[obs_key].obs_encoder.output_dim,
             normalization=nn.BatchNorm2d,
             output_activation=nn.Sigmoid,
         ).to(device)
     elif args.model == "vae":
         model = VariationalAutoEncoder(
-            input_size=(224, 224),
-            input_channel=3,
-            latent_dim=16,
+            input_size=config.obs[obs_key].obs_encoder.input_dim[:2],  # [224, 224]
+            input_channel=config.obs[obs_key].obs_encoder.input_dim[2],
+            latent_dim=config.obs[obs_key].obs_encoder.output_dim,
             normalization=nn.BatchNorm2d,
             output_activation=nn.Sigmoid,
         ).to(device)
@@ -84,8 +95,15 @@ if __name__ == "__main__":
     best_loss = np.inf
 
     # make dir and tensorboard writer
-    os.makedirs("runs", exist_ok=True)
-    output_dir = os.path.join("runs", args.model + "_train")
+    os.makedirs(
+        os.path.join(FileUtils.get_project_folder(args.project_name), "runs"),
+        exist_ok=True,
+    )
+    output_dir = os.path.join(
+        FileUtils.get_project_folder(args.project_name),
+        "runs",
+        args.model + "_" + time.strftime("%Y-%m-%d_%H-%M-%S"),
+    )
     summary_writer = SummaryWriter(output_dir)
 
     for epoch in range(1, args.num_epochs + 1):  # epoch numbers start at 1
@@ -96,7 +114,7 @@ if __name__ == "__main__":
             data_loader_iter = iter(data_loader)
             batch = next(data_loader_iter)
 
-        batch_image = TensorUtils.to_device(batch["obs"]["image"], device)
+        batch_image = TensorUtils.to_device(batch["obs"][obs_key], device)
         batch_image = batch_image.reshape(-1, *batch_image.shape[2:]).permute(
             0, 3, 1, 2
         )  # (B, C, H, W)
@@ -148,21 +166,23 @@ if __name__ == "__main__":
     # load model for test
     if args.model == "ae":
         model = AutoEncoder(
-            input_size=(224, 224),
-            input_channel=3,
-            latent_dim=16,
+            input_size=config.obs[obs_key].obs_encoder.input_dim[:2],  # [224, 224]
+            input_channel=config.obs[obs_key].obs_encoder.input_dim[2],
+            latent_dim=config.obs[obs_key].obs_encoder.output_dim,
             normalization=nn.BatchNorm2d,
+            output_activation=nn.Sigmoid,
         ).to(device)
     elif args.model == "vae":
         model = VariationalAutoEncoder(
-            input_size=(224, 224),
-            input_channel=3,
-            latent_dim=16,
+            input_size=config.obs[obs_key].obs_encoder.input_dim[:2],  # [224, 224]
+            input_channel=config.obs[obs_key].obs_encoder.input_dim[2],
+            latent_dim=config.obs[obs_key].obs_encoder.output_dim,
             normalization=nn.BatchNorm2d,
             output_activation=nn.Sigmoid,
         ).to(device)
     else:
         raise ValueError("Invalid model type")
+
     # model.load_state_dict(torch.load(args.model + "_model.pth"))
     model.load_state_dict(
         torch.load(os.path.join(output_dir, args.model + "_model_best.pth"))
@@ -171,7 +191,7 @@ if __name__ == "__main__":
 
     # test
     random_index = np.random.randint(0, len(dataset))
-    test_image = dataset[random_index]["obs"]["image"]  # numpy ndarray [B,H,W,C]
+    test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray [B,H,W,C]
     test_image_numpy = test_image.squeeze(0).astype(np.uint8)
     test_image_tensor = TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
     test_image_tensor = (

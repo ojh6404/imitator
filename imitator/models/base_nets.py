@@ -482,6 +482,10 @@ class VisionModule(nn.Module):
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         return self.net(inputs)
 
+    def freeze(self):
+        for param in self.parameters():
+            param.requires_grad = False
+
 
 class ConvEncoder(VisionModule):
     def __init__(

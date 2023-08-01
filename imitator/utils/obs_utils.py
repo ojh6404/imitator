@@ -123,6 +123,7 @@ class FloatVectorModality(Modality):
         super(FloatVectorModality, self).__init__(name, shape, mean, std)
         assert self.dim == 1
 
+
     def _default_process_obs(
         self, obs: Union[np.ndarray, torch.Tensor]
     ) -> torch.Tensor:
@@ -163,11 +164,13 @@ class ImageModalityEncoder(ModalityEncoderBase):
     def __init__(self, cfg: Dict, obs_name: str) -> None:
 
         self.cfg = cfg
-        self.pretrained = cfg.pretrained
-        self.input_dim = cfg.input_dim
-        self.output_dim = cfg.output_dim
-        self.has_decoder = cfg.has_decoder
-        self.encoder_model = cfg.model
+
+        self.input_dim = cfg.obs_encoder.input_dim
+        self.output_dim = cfg.obs_encoder.output_dim
+        self.pretrained = cfg.obs_encoder.pretrained
+        self.has_decoder = cfg.obs_encoder.has_decoder
+        self.encoder_model = cfg.obs_encoder.model
+        self.freeze = cfg.obs_encoder.freeze
 
         # self.normalize = cfg.get("normalize", False)
         # if self.normalize:
@@ -180,13 +183,20 @@ class ImageModalityEncoder(ModalityEncoderBase):
         # self.model = eval(cfg.type)(**cfg_dict)
         self.model = eval(self.encoder_model)()
         if self.pretrained:
-            self.model.load_state_dict(torch.load(cfg.model_path))
-
+            self.model.load_state_dict(torch.load(cfg.obs_encoder.model_path)) # TODO
+            if self.freeze:
+                self.model.freeze()
 
         self.nets = nn.ModuleDict()
         self.nets["encoder"] = self.model.nets["encoder"]
         if self.has_decoder:
             self.nets["decoder"] = self.model.nets["decoder"]
+
+        # check requires_grad of encoder and decoder
+        # for name, net in self.nets.items():
+        #     for param in net.parameters():
+        #         print(f"{name} requires_grad: {param.requires_grad}")
+
 
     def forward(self, obs: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         """
@@ -217,19 +227,18 @@ class FloatVectorModalityEncoder(ModalityEncoderBase):
     def __init__(self, cfg: Dict, obs_name: str) -> None:
 
         self.cfg = cfg
-        self.input_dim = cfg.input_dim
-        self.output_dim = cfg.output_dim
-        self.layer_dims = cfg.layer_dims
+        self.input_dim = cfg.obs_encoder.input_dim
+        self.output_dim = cfg.obs_encoder.output_dim
+        self.layer_dims = cfg.obs_encoder.layer_dims
         self.activation = eval("nn." + cfg.get("activation", "ReLU"))
 
-        self.normalize = cfg.get("normalize", True)
+        self.normalize = cfg.get("normalize", False)
         if self.normalize:
-            with open("./config/normalize.yaml", "r") as f:
-                normalizer_cfg = dict(yaml.load(f, Loader=yaml.SafeLoader))
-            max = np.array(normalizer_cfg["obs"][obs_name]["max"])
-            min = np.array(normalizer_cfg["obs"][obs_name]["min"])
-            mean = (max + min) / 2
-            std = (max - min) / 2
+            mean, std = get_normalize_params(cfg.min, cfg.max)
+        else:
+            mean = 0.0
+            std = 1.0
+
 
         # self.modality = FloatVectorModality(name=obs_name, shape=self.input_dim, mean=mean, std=std)
         super(FloatVectorModalityEncoder, self).__init__(obs_name=obs_name,modality=FloatVectorModality(name=obs_name, shape=self.input_dim, mean=mean, std=std))
@@ -283,7 +292,7 @@ class ObservationEncoder(nn.Module):
         self.nets = nn.ModuleDict()
         for key in self.cfg.keys():
             modality_encoder = eval(self.cfg[key]["modality"] + "Encoder")
-            self.nets[key] = modality_encoder(self.cfg[key]["obs_encoder"], key)
+            self.nets[key] = modality_encoder(self.cfg[key], key)
 
     def forward(self, obs_dict: Dict[str, torch.Tensor]) -> torch.Tensor:
         """

@@ -21,7 +21,11 @@ yaml.add_representer(
 def get_normlize_info_from_dataset(project_name, dataset_path):
     config = edict(yaml.safe_load(open(FileUtils.get_config_file(project_name), "r")))
     obs_keys = config.obs.keys()
+
+    # extract obs keys that is not image modality
+    obs_keys = [key for key in obs_keys if config.obs[key].modality != "ImageModality"]
     print("obs_keys: ", obs_keys)
+
     dataset_keys = ["actions"]
     dataset = SequenceDataset(
         hdf5_path=dataset_path,
@@ -50,8 +54,7 @@ def get_normlize_info_from_dataset(project_name, dataset_path):
             obs_max_buf[obs] = np.maximum(obs_max_buf[obs], dataset[i]["obs"][obs])
             obs_min_buf[obs] = np.minimum(obs_min_buf[obs], dataset[i]["obs"][obs])
     for obs in obs_keys:
-        print(obs, obs_max_buf[obs], obs_min_buf[obs])
-        print(obs, obs_max_buf[obs] - obs_min_buf[obs])
+        print(obs, "max and min:", obs_max_buf[obs], obs_min_buf[obs])
     # dump to yaml
     yaml_data = OrderedDict()
     yaml_data["actions"] = OrderedDict()
@@ -75,8 +78,16 @@ def get_normlize_info_from_dataset(project_name, dataset_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--dataset", type=str, default="data/dataset.hdf5")
+    parser.add_argument("-d", "--dataset", type=str)
     parser.add_argument("-pn", "--project_name", type=str)
     args = parser.parse_args()
 
-    get_normlize_info_from_dataset(args.project_name, args.dataset)
+    hdf5_path = (
+        args.dataset
+        if args.dataset
+        else os.path.join(
+            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
+        )
+    )
+
+    get_normlize_info_from_dataset(args.project_name, hdf5_path)
