@@ -21,6 +21,17 @@ def get_normalize_params(min_val, max_val):
     std = (max_array - min_array) / 2.0
     return mean, std
 
+def get_obs_modality_from_config(obs_key, config):
+    obs_modality = config["obs"][obs_key]["modality"]
+    return obs_modality
+
+def obs_to_modality_dict(config):
+    obs_modality_dict = OrderedDict()
+    for obs_key in config.obs.keys():
+        obs_modality_dict[obs_key] = get_obs_modality_from_config(obs_key, config)
+    return obs_modality_dict
+
+
 class Modality(ABC, nn.Module):
     def __init__(self, name: str, shape: Union[int, List[int], Tuple[int]], mean: Union[float, List[float], np.ndarray, torch.Tensor] = 0.0, std: Union[float, List[float], np.ndarray, torch.Tensor] = 1.0)-> None:
         super(Modality, self).__init__()

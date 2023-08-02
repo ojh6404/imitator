@@ -1131,31 +1131,3 @@ class MVP(VisionModule):
         inputs = TensorUtils.to_tensor(inputs)
         inputs = self.transform(inputs)
         return inputs
-
-
-if __name__ == "__main__":
-    # slot_attention_autoencoder = SlotAttentionAutoEncoder(dict())
-
-    test_inputs = torch.randn(16, 3, 128, 128)
-
-    slot_attention_encoder = SlotAttentionEncoder()
-    slot_attention_decoder = SlotAttentionDecoder()
-
-    test_outputs = slot_attention_encoder(test_inputs)
-    test_outputs = slot_attention_decoder(test_outputs)
-
-    for tensor in test_outputs:
-        print(tensor.shape)
-
-    from torchviz import make_dot
-
-    INPUT_SIZE = 28 * 28
-
-    model = NeuralNet()
-    data = torch.randn(1, INPUT_SIZE)
-
-    y = model(data)
-
-    image = make_dot(y, params=dict(model.named_parameters()))
-    image.format = "png"
-    image.render("NeuralNet")

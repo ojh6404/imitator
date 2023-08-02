@@ -9,6 +9,8 @@ import yaml
 from easydict import EasyDict as edict
 from omegaconf import OmegaConf
 
+import datetime
+
 PROJECT_ROOT = os.path.expanduser("~/.imitator")
 
 def extract_number(name):
@@ -37,7 +39,7 @@ def get_project_folder(project_name):
 
 def get_model_folder(project_name):
     project_dir = get_project_folder(project_name)
-    model_dir = os.path.join(project_dir, "models")
+    model_dir = os.path.join(project_dir, "runs")
     return model_dir
 
 def get_config_folder(project_name):
@@ -62,3 +64,7 @@ def get_normalize_cfg(project_name):
     with open(normalize_file, "r") as f:
         normalize_cfg = edict(yaml.safe_load(f))
     return normalize_cfg
+
+# get best model from "project_name/runs/model_type_2023-08-02_15-06-09/model_type_model_best.pth"
+def get_best_runs(project_name, model_type):
+    pass

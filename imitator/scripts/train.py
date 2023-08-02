@@ -30,6 +30,8 @@ if __name__ == "__main__":
     parser.add_argument("-e", "--num_epochs", type=int, default=3000)
     parser.add_argument("-b", "--batch_size", type=int, default=16)
     parser.add_argument("-m", "--model", type=str, default="mlp")
+    parser.add_argument("--device", type=str, default="cuda:0")
+    parser.add_argument("-ckpt", "--checkpoint", type=str)
     args = parser.parse_args()
 
 
@@ -55,7 +57,7 @@ if __name__ == "__main__":
         drop_last=False,
     )
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device(args.device)
     normalize = True  # TODO
     if normalize:
         normalizer_cfg = FileUtils.get_normalize_cfg(args.project_name)
@@ -71,6 +73,11 @@ if __name__ == "__main__":
 
     actor_type = ACTOR_TYPES[args.model]
     model = actor_type(config).to(device)
+
+    # load checkpoint if provided
+    if args.checkpoint:
+        model.load_state_dict(torch.load(args.checkpoint))
+
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
@@ -91,7 +98,6 @@ if __name__ == "__main__":
         args.model + "_" + time.strftime("%Y-%m-%d_%H-%M-%S"),
     )
     summary_writer = SummaryWriter(output_dir)
-
     model.train()
 
     best_loss = np.inf

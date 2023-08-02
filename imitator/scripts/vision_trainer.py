@@ -18,16 +18,9 @@ import imitator.utils.file_utils as FileUtils
 from imitator.utils.datasets import SequenceDataset
 from imitator.models.base_nets import AutoEncoder, VariationalAutoEncoder
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-pn", "--project_name", type=str)
-    parser.add_argument("-d", "--dataset", type=str)
-    parser.add_argument("-e", "--num_epochs", type=int, default=3000)
-    parser.add_argument("-b", "--batch_size", type=int, default=128)
-    parser.add_argument("-m", "--model", type=str, default="ae")
-    args = parser.parse_args()
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+def main(args):
+    device = torch.device(args.device)
     hdf5_path = (
         args.dataset
         if args.dataset
@@ -35,8 +28,7 @@ if __name__ == "__main__":
             FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
         )
     )
-    # obs_key = ["image"]
-    obs_key = "agentview_image"
+    obs_key = args.obs_key
 
     config = FileUtils.get_config_from_project_name(args.project_name)
 
@@ -65,6 +57,7 @@ if __name__ == "__main__":
         drop_last=True,  # don't provide last batch in dataset pass if it's less than 100 in size
     )
 
+
     if args.model == "ae":
         model = AutoEncoder(
             input_size=config.obs[obs_key].obs_encoder.input_dim[:2],  # [224, 224]
@@ -84,12 +77,50 @@ if __name__ == "__main__":
     else:
         raise ValueError("Invalid model type")
 
+
+    # verify model
+    @torch.no_grad()
+    def verify(model):
+        model.eval()
+        random_index = np.random.randint(0, len(dataset))
+        test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray [B,H,W,C]
+        test_image_numpy = test_image.squeeze(0).astype(np.uint8)
+        test_image_tensor = TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
+        test_image_tensor = (
+            test_image_tensor.permute(0, 3, 1, 2).float().contiguous() / 255.0
+        )
+        if args.model == "ae":
+            x, z = model(test_image_tensor)
+        elif args.model == "vae":
+            x, z, mu, logvar = model(test_image_tensor)
+
+        test_image_recon = (
+            TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
+        ).astype(np.uint8)
+        concat_image = np.concatenate(
+            [test_image_numpy, test_image_recon], axis=1
+        )
+        concat_image = cv2.cvtColor(concat_image, cv2.COLOR_RGB2BGR)
+        print("Embedding shape: ", z.shape)
+        cv2.imshow("verify", concat_image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+    # load checkpoint if resuming
+    if args.checkpoint:
+        model.load_state_dict(torch.load(args.checkpoint))
+        if args.verify:
+            verify(model)
+            del dataset
+            return
+
     print(model)
 
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
-        milestones=[args.num_epochs // 2, args.num_epochs // 4 * 3],
+        # milestones=[args.num_epochs // 2, args.num_epochs // 4 * 3],
+        milestones=[args.num_epochs // 2],
         gamma=0.1,
     )
     best_loss = np.inf
@@ -162,6 +193,7 @@ if __name__ == "__main__":
         scheduler.step()
 
     summary_writer.close()
+
     del model
     # load model for test
     if args.model == "ae":
@@ -183,38 +215,24 @@ if __name__ == "__main__":
     else:
         raise ValueError("Invalid model type")
 
-    # model.load_state_dict(torch.load(args.model + "_model.pth"))
     model.load_state_dict(
         torch.load(os.path.join(output_dir, args.model + "_model_best.pth"))
     )
-    model.eval()
-
-    # test
-    random_index = np.random.randint(0, len(dataset))
-    test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray [B,H,W,C]
-    test_image_numpy = test_image.squeeze(0).astype(np.uint8)
-    test_image_tensor = TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
-    test_image_tensor = (
-        test_image_tensor.permute(0, 3, 1, 2).float().contiguous() / 255.0
-    )
-    with torch.no_grad():
-        if args.model == "ae":
-            x, z = model(test_image_tensor)
-        elif args.model == "vae":
-            x, z, mu, logvar = model(test_image_tensor)
-
-        test_image_recon = (
-            TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
-        ).astype(np.uint8)
-        test_image_recon = cv2.cvtColor(test_image_recon, cv2.COLOR_RGB2BGR)
-        test_image_numpy = cv2.cvtColor(test_image_numpy, cv2.COLOR_RGB2BGR)
-        cv2.imshow("test_image", test_image_numpy)
-        cv2.imshow("test_image_recon", test_image_recon)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-
-    with torch.no_grad():
-        embedding = model.nets["encoder"](test_image_tensor)
-        print(embedding[0].shape)
+    verify(model)
 
     del dataset
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-pn", "--project_name", type=str)
+    parser.add_argument("-d", "--dataset", type=str)
+    parser.add_argument("-e", "--num_epochs", type=int, default=3000)
+    parser.add_argument("-b", "--batch_size", type=int, default=128)
+    parser.add_argument("-m", "--model", type=str, default="ae")
+    parser.add_argument("-obs", "--obs_key", type=str, default="image")
+    parser.add_argument("--device", type=str, default="cuda:0")
+    parser.add_argument("-v","--verify", action="store_true", default=False)
+    parser.add_argument("-ckpt", "--checkpoint", type=str)
+    args = parser.parse_args()
+
+    main(args)
