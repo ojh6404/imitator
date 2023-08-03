@@ -14,8 +14,11 @@ from imitator.utils.datasets import SequenceDataset
 
 yaml.add_representer(
     OrderedDict,
-    lambda dumper, data: dumper.represent_mapping("tag:yaml.org,2002:map", data.items()),
+    lambda dumper, data: dumper.represent_mapping(
+        "tag:yaml.org,2002:map", data.items()
+    ),
 )
+
 
 # get min and max data from dataset
 def get_normlize_info_from_dataset(project_name, dataset_path):
@@ -71,10 +74,12 @@ def get_normlize_info_from_dataset(project_name, dataset_path):
         yaml_data["obs"][obs]["max"] = obs_max_buf[obs].tolist()
         yaml_data["obs"][obs]["min"] = obs_min_buf[obs].tolist()
 
-
-    yaml_file = open(os.path.join(FileUtils.get_config_folder(project_name), "normalize.yaml"), "w")
+    yaml_file = open(
+        os.path.join(FileUtils.get_config_folder(project_name), "normalize.yaml"), "w"
+    )
     yaml.dump(yaml_data, yaml_file, default_flow_style=None)
     yaml_file.close()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

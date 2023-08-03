@@ -6,6 +6,8 @@ from collections import OrderedDict
 import numpy as np
 from typing import Optional, Union, Tuple, List, Dict
 
+from PIL import Image
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,6 +15,10 @@ from torchvision import transforms
 from torchvision import models as vision_models
 
 import imitator.utils.tensor_utils as TensorUtils
+
+import ssl
+
+ssl._create_default_https_context = ssl._create_unverified_context
 
 
 def calculate_conv_output_size(
@@ -83,12 +89,17 @@ class Permute(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x.permute(self._dims)
 
+
 class Normalize(nn.Module):
     """
     Module that Normalize a tensor with mean and std.
     """
 
-    def __init__(self, mean: Union[float, List[float], np.ndarray, torch.Tensor], std: Union[float, List[float], np.ndarray, torch.Tensor]) -> None:
+    def __init__(
+        self,
+        mean: Union[float, List[float], np.ndarray, torch.Tensor],
+        std: Union[float, List[float], np.ndarray, torch.Tensor],
+    ) -> None:
         super(Normalize, self).__init__()
         # requires_grad = False
         self._mean = TensorUtils.to_float(TensorUtils.to_tensor(mean))
@@ -100,12 +111,17 @@ class Normalize(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return (x - self.mean) / self.std
 
+
 class Unnormalize(nn.Module):
     """
     Module that Unnormalize a tensor with mean and std.
     """
 
-    def __init__(self, mean: Union[float, List[float], np.ndarray, torch.Tensor], std: Union[float, List[float], np.ndarray, torch.Tensor]) -> None:
+    def __init__(
+        self,
+        mean: Union[float, List[float], np.ndarray, torch.Tensor],
+        std: Union[float, List[float], np.ndarray, torch.Tensor],
+    ) -> None:
         super(Unnormalize, self).__init__()
         # requires_grad = False
         self._mean = TensorUtils.to_float(TensorUtils.to_tensor(mean))
@@ -346,7 +362,9 @@ class RNN(nn.Module):
     def rnn_type(self) -> str:
         return self._rnn_type
 
-    def get_rnn_init_state(self, batch_size: int, device: torch.device) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    def get_rnn_init_state(
+        self, batch_size: int, device: torch.device
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         h_0 = torch.zeros(
             self._rnn_num_layers * self._num_directions,
             batch_size,
@@ -402,9 +420,12 @@ class RNN(nn.Module):
         inputs : (batch_size, input_dim)
         """
         assert inputs.ndim == 2
-        inputs = TensorUtils.to_sequence(inputs) # (batch_size, 1, input_dim)
+        inputs = TensorUtils.to_sequence(inputs)  # (batch_size, 1, input_dim)
         outputs, rnn_state = self.forward(inputs, rnn_state, return_rnn_state=True)
-        return outputs[:, 0, :], rnn_state  # (batch_size, output_dim), (batch_size, hidden_dim)
+        return (
+            outputs[:, 0, :],
+            rnn_state,
+        )  # (batch_size, output_dim), (batch_size, hidden_dim)
 
 
 class Conv(nn.Module):
@@ -1021,13 +1042,66 @@ class SlotAttentionAutoEncoder(VisionModule):
         return x
 
 
+class Resnet(VisionModule):
+    def __init__(
+        self,
+        input_size: List[int] = [224, 224],
+        input_channel: int = 3,
+        resnet_type: str = "resnet18",  # resnet18, resnet34, resnet50, resnet101, resnet152
+        pretrained: bool = True,
+    ) -> None:
+        super(Resnet, self).__init__()
+
+        assert input_channel == 3, "input_channel should be 3"
+
+        RESNET_TYPES = ["resnet18", "resnet34", "resnet50", "resnet101", "resnet152"]
+        RESNET_OUTPUT_DIM = {
+            "resnet18": 512,
+            "resnet34": 512,
+            "resnet50": 2048,
+            "resnet101": 2048,
+            "resnet152": 2048,
+        }
+
+        assert (
+            resnet_type in RESNET_TYPES
+        ), f"resnet_type should be one of {RESNET_TYPES}"
+
+        RESNET_WEIGHTS = {
+            "resnet18": vision_models.ResNet18_Weights.DEFAULT,
+            "resnet34": vision_models.ResNet34_Weights.DEFAULT,
+            "resnet50": vision_models.ResNet50_Weights.DEFAULT,
+            "resnet101": vision_models.ResNet101_Weights.DEFAULT,
+            "resnet152": vision_models.ResNet152_Weights.DEFAULT,
+        }
+        if pretrained:
+            weights = RESNET_WEIGHTS[resnet_type]
+        else:
+            weights = None
+
+        self.nets = nn.ModuleDict()
+        self.nets["encoder"] = getattr(vision_models, resnet_type)(
+            progress=True, weights=weights
+        )
+        self.nets["encoder"].fc = nn.Identity()  # remove the last fc layer
+        self.output_dim = RESNET_OUTPUT_DIM[resnet_type]
+        self.preprocess = RESNET_WEIGHTS[resnet_type].transforms()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x expected to be [B, C, H, W] with C=3 and torch tensor of uint8
+        x = self.preprocess(x)
+        x = self.nets["encoder"](x)
+        return x
+
+
 class R3M(VisionModule):
     def __init__(
         self,
-        input_channel=3,
-        r3m_model_class="resnet18",
-        freeze=True,
-    ):
+        input_size: List[int] = [224, 224],
+        input_channel: int = 3,
+        r3m_type: str = "resnet18",
+        pretrained: bool = True,
+    ) -> None:
         super(R3M, self).__init__()
 
         try:
@@ -1037,39 +1111,97 @@ class R3M(VisionModule):
                 "WARNING: could not load r3m library! Please follow https://github.com/facebookresearch/r3m to install R3M"
             )
 
-        self.net = load_r3m(r3m_model_class)
-        if freeze:
-            self.net.eval()
-
+        R3M_TYPES = ["resnet18", "resnet34", "resnet50"]
+        R3M_OUTPUT_DIM = {
+            "resnet18": 512,
+            "resnet34": 512,
+            "resnet50": 2048,
+        }
         assert input_channel == 3  # R3M only support input image with channel size 3
-        assert r3m_model_class in [
-            "resnet18",
-            "resnet34",
-            "resnet50",
-        ]  # make sure the selected r3m model do exist
+        assert r3m_type in R3M_TYPES, f"resnet_type should be one of {R3M_TYPES}"
 
+        self.nets = nn.ModuleDict()
+        self.nets["encoder"] = load_r3m(r3m_type)
+
+        # self.nets["encoder"] = nn.Sequential(
+        #     *list(load_r3m(r3m_type).module.convnet.children())
+        # )
         self._input_channel = input_channel
-        self._r3m_model_class = r3m_model_class
-        self._freeze = freeze
+        self._r3m_type = r3m_type
+        self._freeze = pretrained
 
-        self.transform = transforms.Compose(
+        self.output_dim = R3M_OUTPUT_DIM[r3m_type]
+
+        self.preprocess = transforms.Compose(
             [
-                transforms.Resize((256, 256)),
-                transforms.CenterCrop(224),
-                transforms.ToTensor(),
+                transforms.Resize((224, 224)),
             ]
         )
 
-    def preprocess(self, inputs: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
-        """
-        preprocess inputs to fit the pretrained model
-        """
-        assert inputs.ndim == 4
-        assert inputs.shape[1] == self._input_channel
-        assert inputs.dtype in [np.uint8, np.float32, torch.uint8, torch.float32]
-        inputs = TensorUtils.to_tensor(inputs)
-        inputs = self.transform(inputs) * 255.0
-        return inputs
+        # self.preprocess = transforms.Compose(
+        #     [
+        #         transforms.Resize(256),
+        #         transforms.CenterCrop(224),
+        #         # transforms.ToPILImage(),
+        #     ]
+        # )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x expected to be [B, C, H, W] with C=3 and torch tensor of uint8
+        x = TensorUtils.to_float(x)
+        x = self.preprocess(x)
+        x = self.nets["encoder"](x)
+        return x
+
+    # def process_obs(self, obs: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
+    #     """
+    #     Images like (B, T, H, W, C) or (B, H, W, C) or (H, W, C) torch tensor or numpy ndarray of uint8.
+    #     Processing obs into a form that can be fed into the encoder like (B*T, C, H, W) or (B, C, H, W) torch tensor of float32.
+    #     """
+    #     assert len(obs.shape) == 5 or len(obs.shape) == 4 or len(obs.shape) == 3
+    #     obs = self.preprocess(obs)
+    #     obs = TensorUtils.to_float(TensorUtils.to_tensor(obs))  # to torch float tensor
+    #     obs = TensorUtils.to_device(obs, "cuda:0")  # to cuda
+    #     # to Batched 4D tensor
+    #     obs = obs.view(-1, obs.shape[-3], obs.shape[-2], obs.shape[-1])
+    #     # to BHWC to BCHW and contigious
+    #     obs = TensorUtils.contiguous(obs.permute(0, 3, 1, 2))
+    #     # normalize
+    #     # obs = self.normalizer(obs)
+    #     # obs = (
+    #     #     obs - self.mean
+    #     # ) / self.std  # to [0, 1] of [B, C, H, W] torch float tensor
+    #     return obs
+
+
+class CLIP(VisionModule):
+    def __init__(
+        self,
+        input_size: List[int] = [224, 224],
+        input_channel: int = 3,
+        clip_type: str = "ViT-B/32",
+        pretrained: bool = True,
+    ) -> None:
+        super(CLIP, self).__init__()
+
+        try:
+            import clip
+        except ImportError:
+            print(
+                "WARNING: could not load r3m library! Please follow https://github.com/openai/CLIP to install clip"
+            )
+
+        CLIP_TYPES = ["resnet18", "resnet34", "resnet50"]
+        CLIP_OUTPUT_DIM = {
+            "resnet18": 512,
+            "resnet34": 512,
+            "resnet50": 2048,
+        }
+        assert input_channel == 3  # CLIP only support input image with channel size 3
+        assert clip_type in CLIP_TYPES, f"clip_type should be one of {CLIP_TYPES}"
+
+        self.nets = nn.ModuleDict()
+        self.nets["encoder"], self.preprocess = clip.load(clip_type)
 
 
 class MVP(VisionModule):
@@ -1131,3 +1263,23 @@ class MVP(VisionModule):
         inputs = TensorUtils.to_tensor(inputs)
         inputs = self.transform(inputs)
         return inputs
+
+
+if __name__ == "__main__":
+    from torchvision.io import read_image
+
+    test_image = read_image("/home/oh/te.jpg")  # (C, H, W) of torch tensor uint8
+    test_image = test_image.unsqueeze(0).to(
+        "cuda:0"
+    )  # (N, C, H, W) of torch tensor uint8
+
+    test_image = test_image / 255.0
+
+    to_pil_image = transforms.ToPILImage()
+    output = to_pil_image(test_image[0])
+
+    # show image
+    output.show()
+
+    print(np.array(output))
+    print(np.array(output).shape)

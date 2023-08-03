@@ -4,7 +4,7 @@ import collections
 from typing import List, Tuple, Dict, Union, Any, Callable, Optional
 import numpy as np
 import torch
-
+from PIL import Image
 
 
 # def recursive_apply(x , type_fn_dict):
@@ -96,6 +96,7 @@ def index_at_time(x, index):
         },
     )
 
+
 def squeeze(x, dim):
     return recursive_apply(
         x,
@@ -105,6 +106,7 @@ def squeeze(x, dim):
             type(None): lambda x: x,
         },
     )
+
 
 def unsqueeze(x, dim):
     return recursive_apply(
@@ -200,7 +202,7 @@ def to_uint8(x):
     return recursive_apply(
         x,
         {
-            torch.Tensor: lambda x: x.uint8(),
+            torch.Tensor: lambda x: x.to(dtype=torch.uint8),
             np.ndarray: lambda x: x.astype(np.uint8),
             type(None): lambda x: x,
         },

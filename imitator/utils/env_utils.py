@@ -25,11 +25,17 @@ from imitator.utils import file_utils as FileUtils
 from imitator.models.policy_nets import MLPActor, RNNActor
 from imitator.utils.obs_utils import *
 
+# import robosuite if possible
+try:
+    import robosuite
+except ImportError:
+    print("robosuite cannot be imported")
+
+
 # try:
 #     import robosuite
 # except ImportError:
 #     print("robosuite cannot be imported")
-
 
 
 yaml.add_representer(
@@ -39,11 +45,13 @@ yaml.add_representer(
     ),
 )
 
+
 def get_env_meta_from_dataset(dataset_path):
     h5py_file = h5py.File(dataset_path, "r")
     env_meta = h5py_file["data"].attrs["env_args"]
     env_meta = yaml.safe_load(env_meta)
     return env_meta
+
 
 def create_env_from_env_meta(env_meta, render=False):
     env_name = env_meta["env_name"]
@@ -54,6 +62,7 @@ def create_env_from_env_meta(env_meta, render=False):
         **env_kwargs,
     )
     return env
+
 
 # def generate_config_from_dataset(dataset_path, project_name):
 #     config = edict(OrderedDict())
@@ -90,20 +99,30 @@ class RolloutBase(ABC):
         if self.actor_type == RNNActor:
             self.rnn_seq_length = cfg.network.policy.rnn.seq_length
 
-
         normalize = True  # TODO
         if normalize:
             normalizer_cfg = FileUtils.get_normalize_cfg(self.project_name)
-            action_mean, action_std = get_normalize_params(normalizer_cfg.actions.min, normalizer_cfg.actions.max)
-            action_mean, action_std = torch.Tensor(action_mean).to(self.device).float(), torch.Tensor(action_std).to(self.device).float()
-            cfg.actions.update({"max": normalizer_cfg.actions.max, "min": normalizer_cfg.actions.min})
+            action_mean, action_std = get_normalize_params(
+                normalizer_cfg.actions.min, normalizer_cfg.actions.max
+            )
+            action_mean, action_std = (
+                torch.Tensor(action_mean).to(self.device).float(),
+                torch.Tensor(action_std).to(self.device).float(),
+            )
+            cfg.actions.update(
+                {"max": normalizer_cfg.actions.max, "min": normalizer_cfg.actions.min}
+            )
             for obs in normalizer_cfg["obs"]:
-                cfg.obs[obs].update({"max": normalizer_cfg.obs[obs].max, "min": normalizer_cfg.obs[obs].min})
+                cfg.obs[obs].update(
+                    {
+                        "max": normalizer_cfg.obs[obs].max,
+                        "min": normalizer_cfg.obs[obs].min,
+                    }
+                )
         else:
             action_mean, action_std = 0.0, 1.0
 
         self.load_model(cfg)
-
 
     def reset(self):
         self.running_cnt = 0
@@ -111,16 +130,20 @@ class RolloutBase(ABC):
     @abstractmethod
     def process_obs(self, obs: Dict[str, Any]) -> Dict[str, Any]:
         pass
-    
+
     def rollout(self, obs: Dict[str, Any]) -> None:
-        obs = self.process_obs(obs) # [D]
-        obs = TensorUtils.to_batch(obs) # [1, D]
+        obs = self.process_obs(obs)  # [D]
+        obs = TensorUtils.to_batch(obs)  # [1, D]
 
         if self.actor_type == RNNActor:
             if self.running_cnt % self.rnn_seq_length == 0:
-                self.rnn_state = self.model.get_rnn_init_state(batch_size=1, device=self.device)
+                self.rnn_state = self.model.get_rnn_init_state(
+                    batch_size=1, device=self.device
+                )
             with torch.no_grad():
-                pred_action, self.rnn_state = self.model.forward_step(obs, rnn_state=self.rnn_state, unnormalize=True)
+                pred_action, self.rnn_state = self.model.forward_step(
+                    obs, rnn_state=self.rnn_state, unnormalize=True
+                )
         else:
             with torch.no_grad():
                 pred_action = self.model.forward_step(obs, unnormalize=True)
@@ -141,33 +164,39 @@ class RolloutBase(ABC):
         self.image_decoder = OrderedDict()
 
         for image_obs in self.image_obs:
-            self.image_encoder[image_obs] = self.model.nets["obs_encoder"].nets[image_obs]
+            self.image_encoder[image_obs] = self.model.nets["obs_encoder"].nets[
+                image_obs
+            ]
             has_decoder = cfg.obs[image_obs].obs_encoder.has_decoder
             if has_decoder:
-                self.image_decoder[image_obs] = self.model.nets["obs_encoder"].nets[image_obs].nets["decoder"]
-
-
+                self.image_decoder[image_obs] = (
+                    self.model.nets["obs_encoder"].nets[image_obs].nets["decoder"]
+                )
 
     @torch.no_grad()
     def render(self, obs: Dict[str, Any]) -> None:
         # input : obs dict of numpy ndarray [1, H, W, C]
-        for image_obs in self.image_obs:
-            image_render = obs[image_obs][0]
+        if self.image_obs:
+            obs = TensorUtils.squeeze(obs, dim=0)
+            for image_obs in self.image_obs:
+                image_render = obs[image_obs]
 
-            # if has_decoder, concat recon and original image to visualize
-            if image_obs in self.image_decoder:
-                image_latent = self.image_encoder[image_obs](image_render[None, ...]) # [1, C, H, W]
-                image_recon = self.image_decoder[image_obs](image_latent) * 255.0 # [1, C, H, W] TODO set unnormalizer
-                image_recon = image_recon.cpu().numpy().astype(np.uint8)
-                image_recon = np.transpose(image_recon, (0, 2, 3, 1)) # [1, H, W, C]
-                image_recon = np.squeeze(image_recon)
-                image_render = np.concatenate((image_render, image_recon), axis=1)
-            cv2.imshow(image_obs, cv2.cvtColor(image_render, cv2.COLOR_RGB2BGR))
-            cv2.waitKey(1)
-
-
-
-
+                # if has_decoder, concat recon and original image to visualize
+                if image_obs in self.image_decoder:
+                    image_latent = self.image_encoder[image_obs](
+                        image_render[None, ...]
+                    )  # [1, C, H, W]
+                    image_recon = (
+                        self.image_decoder[image_obs](image_latent) * 255.0
+                    )  # [1, C, H, W] TODO set unnormalizer
+                    image_recon = image_recon.cpu().numpy().astype(np.uint8)
+                    image_recon = np.transpose(
+                        image_recon, (0, 2, 3, 1)
+                    )  # [1, H, W, C]
+                    image_recon = np.squeeze(image_recon)
+                    image_render = concatenate_image(image_render, image_recon)
+                cv2.imshow(image_obs, cv2.cvtColor(image_render, cv2.COLOR_RGB2BGR))
+                cv2.waitKey(1)
 
 
 class RobosuiteRollout(RolloutBase):
@@ -185,8 +214,9 @@ class RobosuiteRollout(RolloutBase):
     def reset(self):
         super(RobosuiteRollout, self).reset()
         if self.actor_type == RNNActor:
-            self.rnn_state = self.model.get_rnn_init_state(batch_size=1, device=self.device)
-
+            self.rnn_state = self.model.get_rnn_init_state(
+                batch_size=1, device=self.device
+            )
 
     def process_obs(self, obs: Dict[str, Any]) -> Dict[str, Any]:
         processed_obs = obs
@@ -197,7 +227,7 @@ class RobosuiteRollout(RolloutBase):
         # flip image
         for obs_key in self.obs_keys:
             if self.cfg.obs[obs_key].modality == "ImageModality":
-                processed_obs[obs_key] = obs[obs_key][::-1].copy() # flip image
+                processed_obs[obs_key] = obs[obs_key][::-1].copy()  # flip image
         return processed_obs
 
     # def step(self, action: np.ndarray) -> Dict[str, Any]:

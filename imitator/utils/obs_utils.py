@@ -11,7 +11,10 @@ import torch.nn as nn
 import imitator.utils.tensor_utils as TensorUtils
 from imitator.models.base_nets import *
 
+from torchvision import transforms as T
+
 from typing import Union, List, Tuple, Dict, Any, Optional
+
 
 # fucntion that get mean and std from max and min
 def get_normalize_params(min_val, max_val):
@@ -21,9 +24,11 @@ def get_normalize_params(min_val, max_val):
     std = (max_array - min_array) / 2.0
     return mean, std
 
+
 def get_obs_modality_from_config(obs_key, config):
     obs_modality = config["obs"][obs_key]["modality"]
     return obs_modality
+
 
 def obs_to_modality_dict(config):
     obs_modality_dict = OrderedDict()
@@ -32,8 +37,44 @@ def obs_to_modality_dict(config):
     return obs_modality_dict
 
 
+def concatenate_image(
+    image1: Union[np.ndarray, torch.Tensor], image2: Union[np.ndarray, torch.Tensor]
+) -> np.ndarray:
+    assert image1.ndim == image2.ndim == 3
+    if isinstance(image1, torch.Tensor):
+        image1 = TensorUtils.to_numpy(image1)
+    if isinstance(image2, torch.Tensor):
+        image2 = TensorUtils.to_numpy(image2)
+    if image1.dtype != np.uint8:
+        image1 = (image1 * 255).astype(np.uint8)
+    if image2.dtype != np.uint8:
+        image2 = (image2 * 255).astype(np.uint8)
+
+    assert image1.shape == image2.shape
+    image = np.concatenate([image1, image2], axis=1)
+    return image
+
+
+def GaussianNoise(img):
+    assert isinstance(img, torch.Tensor)
+    dtype = img.dtype
+    if not img.is_floating_point():
+        img = img.to(torch.float32)
+    sigma = 25.0
+    out = img + sigma * torch.randn_like(img)
+    if out.dtype != dtype:
+        out = out.to(dtype)
+    return out
+
+
 class Modality(ABC, nn.Module):
-    def __init__(self, name: str, shape: Union[int, List[int], Tuple[int]], mean: Union[float, List[float], np.ndarray, torch.Tensor] = 0.0, std: Union[float, List[float], np.ndarray, torch.Tensor] = 1.0)-> None:
+    def __init__(
+        self,
+        name: str,
+        shape: Union[int, List[int], Tuple[int]],
+        mean: Union[float, List[float], np.ndarray, torch.Tensor] = 0.0,
+        std: Union[float, List[float], np.ndarray, torch.Tensor] = 1.0,
+    ) -> None:
         super(Modality, self).__init__()
         self.name = name
         self.shape = shape
@@ -47,7 +88,6 @@ class Modality(ABC, nn.Module):
         mean: Union[float, List[float], np.ndarray, torch.Tensor],
         std: Union[float, List[float], np.ndarray, torch.Tensor],
     ) -> None:
-
         self.normalizer = Normalize(mean, std)
         self.unnormalizer = Unnormalize(mean, std)
 
@@ -61,13 +101,19 @@ class Modality(ABC, nn.Module):
     def _default_unprocess_obs(self, obs: torch.Tensor) -> np.ndarray:
         return self.unnormalizer(obs)
 
-    @classmethod
-    def set_obs_processor(cls, processor=None):
-        cls._custom_obs_processor = processor
+    def set_obs_processor(self, processor=None):
+        self._custom_obs_processor = processor
 
-    @classmethod
-    def set_obs_unprocessor(cls, unprocessor=None):
-        cls._custom_obs_unprocessor = unprocessor
+    def set_obs_unprocessor(self, unprocessor=None):
+        self._custom_obs_unprocessor = unprocessor
+
+    # @classmethod
+    # def set_obs_processor(cls, processor=None):
+    #     cls._custom_obs_processor = processor
+
+    # @classmethod
+    # def set_obs_unprocessor(cls, unprocessor=None):
+    #     cls._custom_obs_unprocessor = unprocessor
 
     def process_obs(self, obs: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         if hasattr(self, "_custom_obs_processor"):
@@ -83,7 +129,13 @@ class Modality(ABC, nn.Module):
 
 
 class ImageModality(Modality):
-    def __init__(self, name: str, shape: Union[List[int], Tuple[int]] = [224, 224, 3], mean: Union[float, List[float], np.ndarray, torch.Tensor] = 0.0, std: Union[float, List[float], np.ndarray, torch.Tensor] = 255.0)-> None:
+    def __init__(
+        self,
+        name: str,
+        shape: Union[List[int], Tuple[int]] = [224, 224, 3],
+        mean: Union[float, List[float], np.ndarray, torch.Tensor] = 0.0,
+        std: Union[float, List[float], np.ndarray, torch.Tensor] = 255.0,
+    ) -> None:
         super(ImageModality, self).__init__(name, shape, mean, std)
 
         assert self.dim == 3
@@ -130,10 +182,15 @@ class ImageModality(Modality):
 
 
 class FloatVectorModality(Modality):
-    def __init__(self, name: str, shape: Union[int, List[int], Tuple[int]], mean: Union[float, List[float], np.ndarray, torch.Tensor] = 0.0, std: Union[float, List[float], np.ndarray, torch.Tensor] = 1.0)-> None:
+    def __init__(
+        self,
+        name: str,
+        shape: Union[int, List[int], Tuple[int]],
+        mean: Union[float, List[float], np.ndarray, torch.Tensor] = 0.0,
+        std: Union[float, List[float], np.ndarray, torch.Tensor] = 1.0,
+    ) -> None:
         super(FloatVectorModality, self).__init__(name, shape, mean, std)
         assert self.dim == 1
-
 
     def _default_process_obs(
         self, obs: Union[np.ndarray, torch.Tensor]
@@ -153,10 +210,11 @@ class FloatVectorModality(Modality):
 
     def _default_unprocess_obs(self, processed_obs: torch.Tensor) -> np.ndarray:
         """
-        Vector like (B, D) torch tensor.
-        Unprocessing obs into a form that can be fed into the decoder like (B, D) numpy ndarray of float32.
+        Vector like (B, D) or (B, T, D) torch tensor
+        Unprocessing obs into a form that can be fed into the decoder like (B, D) or (B, T, D) numpy ndarray of float32.
         """
-        assert len(processed_obs.shape) == 2
+
+        assert len(processed_obs.shape) == 2 or len(processed_obs.shape) == 3
         # unprocessed_obs = processed_obs * self.std + self.mean
         unprocessed_obs = self.unnormalizer(processed_obs)
         unprocessed_obs = TensorUtils.to_numpy(unprocessed_obs)
@@ -165,7 +223,9 @@ class FloatVectorModality(Modality):
 
 class ModalityEncoderBase(nn.Module):
     # pass
-    def __init__(self, obs_name: str, modality: Union[ImageModality, FloatVectorModality]) -> None:
+    def __init__(
+        self, obs_name: str, modality: Union[ImageModality, FloatVectorModality]
+    ) -> None:
         super(ModalityEncoderBase, self).__init__()
         self.obs_name = obs_name
         self.modality = modality
@@ -173,7 +233,6 @@ class ModalityEncoderBase(nn.Module):
 
 class ImageModalityEncoder(ModalityEncoderBase):
     def __init__(self, cfg: Dict, obs_name: str) -> None:
-
         self.cfg = cfg
 
         self.input_dim = cfg.obs_encoder.input_dim
@@ -182,32 +241,66 @@ class ImageModalityEncoder(ModalityEncoderBase):
         self.has_decoder = cfg.obs_encoder.has_decoder
         self.encoder_model = cfg.obs_encoder.model
         self.freeze = cfg.obs_encoder.freeze
+        self.model_kwargs = cfg.obs_encoder.model_kwargs
+        self.activation = eval("nn." + cfg.get("activation", "ReLU"))
 
-        # self.normalize = cfg.get("normalize", False)
-        # if self.normalize:
-        #     pass  # TODO: add custom normalization
-        # else:
-        #     self.modality.set_scaler(mean=0.0, std=1.0)
-        super(ImageModalityEncoder, self).__init__(obs_name=obs_name,modality=ImageModality(name=obs_name, shape=self.input_dim, mean=0.0, std=255.0))
+        if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:
+            mean = 0.0
+            std = 255.0
+        else:
+            mean = 0.0
+            std = 1.0
 
+        # TODO
+        super(ImageModalityEncoder, self).__init__(
+            obs_name=obs_name,
+            modality=ImageModality(
+                name=obs_name, shape=self.input_dim, mean=mean, std=std
+            ),
+        )
 
-        # self.model = eval(cfg.type)(**cfg_dict)
-        self.model = eval(self.encoder_model)()
+        if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:  # TODO
+            self.model = eval(self.encoder_model)(
+                input_size=cfg.obs_encoder.input_dim[:2],
+                input_channel=cfg.obs_encoder.input_dim[2],
+                latent_dim=cfg.obs_encoder.output_dim,
+            )
+        else:
+            self.model = eval(self.encoder_model)(**self.model_kwargs)
+
+        # TODO
+        # test = self.model.process_obs
+        # self.modality.set_obs_processor(test)
+
         if self.pretrained:
-            self.model.load_state_dict(torch.load(cfg.obs_encoder.model_path)) # TODO
+            if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:
+                self.model.load_state_dict(
+                    torch.load(cfg.obs_encoder.model_path)
+                )  # TODO
             if self.freeze:
                 self.model.freeze()
 
         self.nets = nn.ModuleDict()
-        self.nets["encoder"] = self.model.nets["encoder"]
         if self.has_decoder:
+            self.nets["encoder"] = self.model.nets["encoder"]
             self.nets["decoder"] = self.model.nets["decoder"]
+        else:
+            self.nets["encoder"] = self.model
+
+        if cfg.obs_encoder.layer_dims is not None:
+            self.nets["mlp_encoder"] = MLP(
+                input_dim=self.model.output_dim,
+                layer_dims=cfg.obs_encoder.layer_dims,
+                output_dim=self.output_dim,
+                activation=self.activation,
+            )
+        else:
+            self.nets["mlp_encoder"] = nn.Identity()
 
         # check requires_grad of encoder and decoder
         # for name, net in self.nets.items():
         #     for param in net.parameters():
         #         print(f"{name} requires_grad: {param.requires_grad}")
-
 
     def forward(self, obs: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         """
@@ -222,21 +315,29 @@ class ImageModalityEncoder(ModalityEncoderBase):
         else:  # len(obs.shape) == 3
             height, width, channel = obs.shape
 
-        processed_obs = self.modality.process_obs(obs) # to [0, 1] of [-1, C, H, W] torch float tensor
+        processed_obs = self.modality.process_obs(
+            obs
+        )  # to [0, 1] of [-1, C, H, W] torch float tensor
 
-        latent, _, _ = self.nets["encoder"](processed_obs) # (B, T, D) or (B, D) or (D)
+        if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:
+            latent, _, _ = self.nets["encoder"](
+                processed_obs
+            )  # (B, T, D) or (B, D) or (D)
+        else:
+            latent = self.nets["encoder"](processed_obs)
         if len(obs.shape) == 5:
             latent = latent.view(batch_size, seq_len, -1)  # (B, T, D)
         elif len(obs.shape) == 4:
             latent = latent.view(batch_size, -1)  # (B, D)
         else:  # len(obs.shape) == 3
             latent = latent.view(-1)  # (D)
+
+        latent = self.nets["mlp_encoder"](latent)  # (B, T, D) or (B, D) or (D)
         return latent
 
 
 class FloatVectorModalityEncoder(ModalityEncoderBase):
     def __init__(self, cfg: Dict, obs_name: str) -> None:
-
         self.cfg = cfg
         self.input_dim = cfg.obs_encoder.input_dim
         self.output_dim = cfg.obs_encoder.output_dim
@@ -250,9 +351,13 @@ class FloatVectorModalityEncoder(ModalityEncoderBase):
             mean = 0.0
             std = 1.0
 
-
         # self.modality = FloatVectorModality(name=obs_name, shape=self.input_dim, mean=mean, std=std)
-        super(FloatVectorModalityEncoder, self).__init__(obs_name=obs_name,modality=FloatVectorModality(name=obs_name, shape=self.input_dim, mean=mean, std=std))
+        super(FloatVectorModalityEncoder, self).__init__(
+            obs_name=obs_name,
+            modality=FloatVectorModality(
+                name=obs_name, shape=self.input_dim, mean=mean, std=std
+            ),
+        )
 
         self.nets = (
             MLP(
@@ -264,7 +369,6 @@ class FloatVectorModalityEncoder(ModalityEncoderBase):
             if self.layer_dims
             else nn.Identity()
         )
-
 
     def forward(self, obs: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         """

@@ -17,6 +17,36 @@ import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
 from imitator.utils.datasets import SequenceDataset
 from imitator.models.base_nets import AutoEncoder, VariationalAutoEncoder
+from imitator.utils.obs_utils import GaussianNoise, concatenate_image
+
+
+# verify model
+@torch.no_grad()
+def verify(model, dataset, obs_key="image"):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.eval()
+    random_index = np.random.randint(0, len(dataset))
+    test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray [B,H,W,C]
+
+    test_image_numpy = test_image.squeeze(0).astype(np.uint8)
+    test_image_tensor = TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
+    test_image_tensor = (
+        test_image_tensor.permute(0, 3, 1, 2).float().contiguous() / 255.0
+    )
+    if args.model == "ae":
+        x, z = model(test_image_tensor)
+    elif args.model == "vae":
+        x, z, mu, logvar = model(test_image_tensor)
+
+    test_image_recon = (
+        TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
+    ).astype(np.uint8)
+    concat_image = concatenate_image(test_image_numpy, test_image_recon)
+    concat_image = cv2.cvtColor(concat_image, cv2.COLOR_RGB2BGR)
+    print("Embedding shape: ", z.shape)
+    cv2.imshow("verify", concat_image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
 
 def main(args):
@@ -29,21 +59,26 @@ def main(args):
         )
     )
     obs_key = args.obs_key
-
     config = FileUtils.get_config_from_project_name(args.project_name)
+
+    if config.obs[obs_key].obs_encoder.model_path is None:
+        config.obs[obs_key].obs_encoder.model_path = os.path.join(
+            FileUtils.get_models_folder(args.project_name),
+            obs_key + "_model.pth",
+        )
 
     dataset = SequenceDataset(
         hdf5_path=hdf5_path,
         obs_keys=[obs_key],  # observations we want to appear in batches
         dataset_keys=config.dataset.dataset_keys,
-        load_next_obs=True,
+        load_next_obs=False,
         frame_stack=1,
         seq_length=1,  # length-10 temporal sequences
         pad_frame_stack=True,
         pad_seq_length=True,  # pad last obs per trajectory to ensure all sequences are sampled
         get_pad_mask=False,
         goal_mode=None,
-        hdf5_cache_mode=None,  # cache dataset in memory to avoid repeated file i/o
+        hdf5_cache_mode="all",  # cache dataset in memory to avoid repeated file i/o
         hdf5_use_swmr=True,
     )
 
@@ -52,67 +87,32 @@ def main(args):
         sampler=None,  # no custom sampling logic (uniform sampling)
         batch_size=args.batch_size,  # batches of size 100
         shuffle=True,
-        # shuffle=False,
         num_workers=0,
         drop_last=True,  # don't provide last batch in dataset pass if it's less than 100 in size
     )
 
-
-    if args.model == "ae":
-        model = AutoEncoder(
-            input_size=config.obs[obs_key].obs_encoder.input_dim[:2],  # [224, 224]
-            input_channel=config.obs[obs_key].obs_encoder.input_dim[2],
-            latent_dim=config.obs[obs_key].obs_encoder.output_dim,
-            normalization=nn.BatchNorm2d,
-            output_activation=nn.Sigmoid,
-        ).to(device)
-    elif args.model == "vae":
-        model = VariationalAutoEncoder(
-            input_size=config.obs[obs_key].obs_encoder.input_dim[:2],  # [224, 224]
-            input_channel=config.obs[obs_key].obs_encoder.input_dim[2],
-            latent_dim=config.obs[obs_key].obs_encoder.output_dim,
-            normalization=nn.BatchNorm2d,
-            output_activation=nn.Sigmoid,
-        ).to(device)
-    else:
-        raise ValueError("Invalid model type")
-
-
-    # verify model
-    @torch.no_grad()
-    def verify(model):
-        model.eval()
-        random_index = np.random.randint(0, len(dataset))
-        test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray [B,H,W,C]
-        test_image_numpy = test_image.squeeze(0).astype(np.uint8)
-        test_image_tensor = TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
-        test_image_tensor = (
-            test_image_tensor.permute(0, 3, 1, 2).float().contiguous() / 255.0
-        )
-        if args.model == "ae":
-            x, z = model(test_image_tensor)
-        elif args.model == "vae":
-            x, z, mu, logvar = model(test_image_tensor)
-
-        test_image_recon = (
-            TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
-        ).astype(np.uint8)
-        concat_image = np.concatenate(
-            [test_image_numpy, test_image_recon], axis=1
-        )
-        concat_image = cv2.cvtColor(concat_image, cv2.COLOR_RGB2BGR)
-        print("Embedding shape: ", z.shape)
-        cv2.imshow("verify", concat_image)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+    model = eval(config.obs[obs_key].obs_encoder.model)(
+        **config.obs[obs_key].obs_encoder.model_kwargs
+    ).to(device)
 
     # load checkpoint if resuming
-    if args.checkpoint:
-        model.load_state_dict(torch.load(args.checkpoint))
-        if args.verify:
-            verify(model)
-            del dataset
-            return
+    if args.resume:
+        if args.checkpoint:
+            model.load_state_dict(torch.load(args.checkpoint))
+        else:
+            model.load_state_dict(
+                torch.load(FileUtils.get_best_runs(args.project_name, args.model))
+            )
+    elif args.verify:
+        if args.checkpoint:
+            model.load_state_dict(torch.load(args.checkpoint))
+        else:
+            model.load_state_dict(
+                torch.load(FileUtils.get_best_runs(args.project_name, args.model))
+            )
+        verify(model, dataset, obs_key=obs_key)
+        del dataset
+        return
 
     print(model)
 
@@ -169,9 +169,9 @@ def main(args):
         # print loss with 5 significant digits every 100 epochs
         if epoch % 100 == 0:
             loss = loss_sum.item()
-            if args.model == "ae":
+            if config.obs[obs_key].obs_encoder.model == "AutoEncoder":
                 print(f"epoch: {epoch}, loss: {loss:.5g}")
-            elif args.model == "vae":
+            elif config.obs[obs_key].obs_encoder.model == "VariationalAutoEncoder":
                 recons_loss = loss_dict["reconstruction_loss"].item()
                 kl_loss = loss_dict["kld_loss"].item()
                 print(
@@ -184,10 +184,17 @@ def main(args):
 
         if loss_sum.item() < best_loss and (epoch > args.num_epochs / 10):
             print(f"best model saved with loss {loss_sum.item():.5g}")
+            # save in log dir
             torch.save(
                 model.state_dict(),
                 os.path.join(output_dir, args.model + "_model_best.pth"),
             )
+            # save in models dir
+            torch.save(
+                model.state_dict(),
+                config.obs[obs_key].obs_encoder.model_path,
+            )
+
             best_loss = loss_sum.item()
 
         scheduler.step()
@@ -196,31 +203,17 @@ def main(args):
 
     del model
     # load model for test
-    if args.model == "ae":
-        model = AutoEncoder(
-            input_size=config.obs[obs_key].obs_encoder.input_dim[:2],  # [224, 224]
-            input_channel=config.obs[obs_key].obs_encoder.input_dim[2],
-            latent_dim=config.obs[obs_key].obs_encoder.output_dim,
-            normalization=nn.BatchNorm2d,
-            output_activation=nn.Sigmoid,
-        ).to(device)
-    elif args.model == "vae":
-        model = VariationalAutoEncoder(
-            input_size=config.obs[obs_key].obs_encoder.input_dim[:2],  # [224, 224]
-            input_channel=config.obs[obs_key].obs_encoder.input_dim[2],
-            latent_dim=config.obs[obs_key].obs_encoder.output_dim,
-            normalization=nn.BatchNorm2d,
-            output_activation=nn.Sigmoid,
-        ).to(device)
-    else:
-        raise ValueError("Invalid model type")
+    model = eval(config.obs[obs_key].obs_encoder.model)(
+        **config.obs[obs_key].obs_encoder.model_kwargs
+    ).to(device)
 
     model.load_state_dict(
         torch.load(os.path.join(output_dir, args.model + "_model_best.pth"))
     )
-    verify(model)
+    verify(model, dataset, obs_key=obs_key)
 
     del dataset
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -231,7 +224,8 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model", type=str, default="ae")
     parser.add_argument("-obs", "--obs_key", type=str, default="image")
     parser.add_argument("--device", type=str, default="cuda:0")
-    parser.add_argument("-v","--verify", action="store_true", default=False)
+    parser.add_argument("-v", "--verify", action="store_true", default=False)
+    parser.add_argument("-r", "--resume", action="store_true", default=False)
     parser.add_argument("-ckpt", "--checkpoint", type=str)
     args = parser.parse_args()
 

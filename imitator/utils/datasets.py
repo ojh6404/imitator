@@ -12,6 +12,7 @@ import torch.utils.data
 import imitator.utils.file_utils as FileUtils
 import imitator.utils.tensor_utils as TensorUtils
 
+
 class SequenceDataset(torch.utils.data.Dataset):
     def __init__(
         self,
@@ -115,7 +116,7 @@ class SequenceDataset(torch.utils.data.Dataset):
             obs_keys_in_memory = self.obs_keys
             if self.hdf5_cache_mode == "float_vector":
                 # only store FloatVector observations
-                obs_keys_in_memory = [] # TODO
+                obs_keys_in_memory = []  # TODO
             #     for k in self.obs_keys:
             #         if ObsUtils.key_is_obs_modality(k, "low_dim"):
             #             obs_keys_in_memory.append(k)
@@ -135,7 +136,8 @@ class SequenceDataset(torch.utils.data.Dataset):
                 print("SequenceDataset: caching get_item calls...")
                 self.getitem_cache = [
                     # self.get_item(i) for i in LogUtils.custom_tqdm(range(len(self)))
-                    self.get_item(i) for i in tqdm(range(len(self)))
+                    self.get_item(i)
+                    for i in tqdm(range(len(self)))
                 ]
 
                 # don't need the previous cache anymore
