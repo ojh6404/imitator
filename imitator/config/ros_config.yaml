@@ -11,7 +11,7 @@ obs: # input into policy
     modality: "ImageModality"
     topic_name: "/kinect_head/rgb/image_rect_color/compressed"
     msg_type: "CompressedImage"
-    normalize: True
+    normalize: False
     obs_encoder:
       model: "VariationalAutoEncoder"
       model_kwargs:
@@ -20,9 +20,10 @@ obs: # input into policy
         latent_dim: 32
         # normalization: "BatchNorm2d"
         # output_activation: "Sigmoid"
-      model_path: "./vae_model.pth"
+      model_path: null
       pretrained: True
       input_dim: [224, 224, 3]
+      layer_dims: null
       output_dim: 32
       has_decoder: True
       freeze: True
@@ -46,6 +47,7 @@ actions:
 network:
   policy:
     model: "RNNActor"
+    model_path: null
     rnn:
       type: "LSTM"
       rnn_num_layers: 2
