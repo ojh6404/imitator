@@ -21,17 +21,24 @@ yaml.add_representer(
 
 
 # get min and max data from dataset
-def get_normlize_info_from_dataset(project_name, dataset_path):
-    config = edict(yaml.safe_load(open(FileUtils.get_config_file(project_name), "r")))
-    obs_keys = config.obs.keys()
+def main(args):
+    config = FileUtils.get_config_from_project_name(args.project_name)
+    hdf5_path = (
+        args.dataset
+        if args.dataset
+        else os.path.join(
+            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
+        )
+    )
+    obs_keys = list(config.obs.keys())
 
     # extract obs keys that is not image modality
-    obs_keys = [key for key in obs_keys if config.obs[key].modality != "ImageModality"]
+    obs_keys = [key for key in obs_keys if config.obs[key].modality != "ImageModality" and config.obs[key].normalize]
     print("obs_keys: ", obs_keys)
 
     dataset_keys = ["actions"]
     dataset = SequenceDataset(
-        hdf5_path=dataset_path,
+        hdf5_path=hdf5_path,
         obs_keys=obs_keys,  # observations we want to appear in batches
         dataset_keys=dataset_keys,  # can optionally specify more keys here if they should appear in batches
         load_next_obs=True,
@@ -42,7 +49,6 @@ def get_normlize_info_from_dataset(project_name, dataset_path):
         get_pad_mask=False,
         goal_mode=None,
         hdf5_cache_mode="all",  # cache dataset in memory to avoid repeated file i/o
-        # hdf5_cache_mode=None,  # cache dataset in memory to avoid repeated file i/o
         hdf5_use_swmr=True,
     )
 
@@ -75,7 +81,7 @@ def get_normlize_info_from_dataset(project_name, dataset_path):
         yaml_data["obs"][obs]["min"] = obs_min_buf[obs].tolist()
 
     yaml_file = open(
-        os.path.join(FileUtils.get_config_folder(project_name), "normalize.yaml"), "w"
+        os.path.join(FileUtils.get_config_folder(args.project_name), "normalize.yaml"), "w"
     )
     yaml.dump(yaml_data, yaml_file, default_flow_style=None)
     yaml_file.close()
@@ -87,12 +93,4 @@ if __name__ == "__main__":
     parser.add_argument("-pn", "--project_name", type=str)
     args = parser.parse_args()
 
-    hdf5_path = (
-        args.dataset
-        if args.dataset
-        else os.path.join(
-            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
-        )
-    )
-
-    get_normlize_info_from_dataset(args.project_name, hdf5_path)
+    main(args)

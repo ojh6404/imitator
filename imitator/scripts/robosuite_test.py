@@ -52,6 +52,8 @@ if __name__ == "__main__":
                 FileUtils.get_models_folder(args.project_name),
                 f"{image_obs}_model.pth",
             )
+            if config.obs[image_obs].obs_encoder.pretrained:
+                continue
             if not os.path.exists(obs_default_model_path):
                 raise ValueError(
                     f"Model for {image_obs} does not exist. Please specify a model path in config file."

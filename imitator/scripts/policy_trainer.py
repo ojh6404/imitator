@@ -68,9 +68,12 @@ def main(args):
                 f"{image_obs}_model.pth",
             )
             if not os.path.exists(obs_default_model_path):
-                raise ValueError(
-                    f"Model for {image_obs} does not exist. Please specify a model path in config file."
-                )
+                if config.obs[image_obs].obs_encoder.pretrained:
+                    print("Use pretrained model")
+                else:
+                    raise ValueError(
+                        f"Model for {image_obs} does not exist. Please specify a model path in config file."
+                    )
             else:
                 config.obs[image_obs].obs_encoder.model_path = obs_default_model_path
 
@@ -200,6 +203,11 @@ def main(args):
                 os.path.join(output_dir, args.model + "_model_best.pth"),
             )
             best_loss = loss.item()
+
+            # create model folder if not exists
+            os.makedirs(
+                FileUtils.get_models_folder(args.project_name), exist_ok=True
+            )
             torch.save(model.state_dict(), config.network.policy.model_path)
 
         summary_writer.add_scalar("train/loss", loss.item(), global_step=epoch)
