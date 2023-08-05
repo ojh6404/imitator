@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import psutil
 import os
 import argparse
 from imitator.models.base_nets import Normalize, Unnormalize
@@ -16,12 +17,15 @@ from torch.utils.tensorboard import SummaryWriter
 from easydict import EasyDict as edict
 
 from imitator.utils.datasets import SequenceDataset
-from imitator.models.policy_nets import MLPActor, RNNActor, TransformerActor
+from imitator.models.policy_nets import MLPActor, RNNActor
 import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
 from imitator.utils.obs_utils import get_normalize_params
 
-ACTOR_TYPES = {"mlp": MLPActor, "rnn": RNNActor, "transformer": TransformerActor}
+from torch.profiler import profile, record_function, ProfilerActivity
+
+
+ACTOR_TYPES = {"mlp": MLPActor, "rnn": RNNActor}
 
 
 # verify model
@@ -56,8 +60,6 @@ def main(args):
     num_epochs = args.num_epochs
     seq_length = config.network.policy.rnn.seq_length if args.model == "rnn" else 1
 
-    train_cfg = config.network.policy.train
-
     image_obs_keys = [
         obs_key
         for obs_key in obs_keys
@@ -85,11 +87,6 @@ def main(args):
             f"{args.model}_actor_model.pth",
         )
         config.network.policy.model_path = default_model_path
-
-    if config.network.policy.model == "TransformerActor":
-        seq_length = 1
-        print("TransformerActor only supports seq_length=1")
-
 
     dataset = SequenceDataset(
         hdf5_path=hdf5_path,
@@ -170,12 +167,21 @@ def main(args):
     summary_writer = SummaryWriter(output_dir)
     model.train()
 
+    # debug model memory usage
+    # print(f"Model size: {sum(p.numel() for p in model.parameters()) / 1024/ 1024} Mb")
+    #
+    print(
+        f"Model size: {sum(p.numel() * p.element_size() for p in model.parameters()) / 1024/ 1024} Mb"
+    )  # 26 Mb
+
+    print("memory allocated", torch.cuda.memory_allocated() / 1024 / 1024, "Mb")
+    print("memory reserved", torch.cuda.memory_reserved() / 1024 / 1024, "Mb")
+    input("model loaded")  # 356 Mb after loaded
+
     best_loss = np.inf
     data_loader_iter = iter(data_loader)
 
     for epoch in range(1, num_epochs + 1):  # epoch numbers start at 1
-        # data_loader_iter = iter(data_loader)
-        # for _ in range(gradient_steps_per_epoch):
         try:
             batch = next(data_loader_iter)
         except StopIteration:
@@ -184,9 +190,66 @@ def main(args):
             batch = next(data_loader_iter)
         batch = TensorUtils.to_float(TensorUtils.to_device(batch, device))
 
+        print("memory allocated", torch.cuda.memory_allocated() / 1024 / 1024, "Mb")
+        print("memory reserved", torch.cuda.memory_reserved() / 1024 / 1024, "Mb")
+        input("after batch loaded")  # 7708 Mb
+
+        # debug print for memory usage of cuda tensors of batch["obs"]
+        # print(torch.cuda.memory_summary(device=None, abbreviated=False))
+        for obs in batch["obs"]:
+            # print(f"{obs}: {batch["obs"][obs].element_size() * batch["obs"][obs].nelement() / 1024 / 1024}")
+            print(
+                obs,
+                batch["obs"][obs].shape,
+                batch["obs"][obs].dtype,
+                batch["obs"][obs].element_size(),
+                batch["obs"][obs].nelement(),
+                batch["obs"][obs].element_size()
+                * batch["obs"][obs].nelement()
+                / 1024
+                / 1024,
+            )
+        print(
+            "action",
+            batch["actions"].shape,
+            batch["actions"].dtype,
+            batch["actions"].element_size(),
+            batch["actions"].nelement(),
+            batch["actions"].element_size() * batch["actions"].nelement() / 1024 / 1024,
+        )
+
+        # print(torch.cuda.memory_allocated() / 1024 / 1024)  # 1013.73779296875
+        # print(torch.cuda.memory_reserved() / 1024 / 1024)  # 1013.73779296875
+        print("memory allocated", torch.cuda.memory_allocated() / 1024 / 1024, "Mb")
+        print("memory reserved", torch.cuda.memory_reserved() / 1024 / 1024, "Mb")
+
+        input("right before forward")
         # calculate time and loss
         start_time = time.time()
         prediction = model(batch["obs"])  # [B, T, D]
+
+        # debug prediction memory usage
+        print(
+            "prediction memory",
+            prediction.element_size() * prediction.nelement() / 1024 / 1024,
+        )
+
+        # with profile(
+        #     activities=[ProfilerActivity.CUDA], profile_memory=True, record_shapes=True
+        # ) as prof:
+        #     model(batch["obs"])
+        # print(prof.key_averages().table(row_limit=10))
+
+        print("memory allocated", torch.cuda.memory_allocated() / 1024 / 1024, "Mb")
+        print("memory reserved", torch.cuda.memory_reserved() / 1024 / 1024, "Mb")
+
+        input("after forward")
+
+        torch.cuda.empty_cache()
+        print("memory allocated", torch.cuda.memory_allocated() / 1024 / 1024, "Mb")
+        print("memory reserved", torch.cuda.memory_reserved() / 1024 / 1024, "Mb")
+        input("after empty cache")
+
         end_time = time.time()
         groundtruth_action = action_normalizer(batch["actions"])
 
@@ -212,9 +275,7 @@ def main(args):
             best_loss = loss.item()
 
             # create model folder if not exists
-            os.makedirs(
-                FileUtils.get_models_folder(args.project_name), exist_ok=True
-            )
+            os.makedirs(FileUtils.get_models_folder(args.project_name), exist_ok=True)
             torch.save(model.state_dict(), config.network.policy.model_path)
 
         summary_writer.add_scalar("train/loss", loss.item(), global_step=epoch)

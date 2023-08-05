@@ -4,7 +4,7 @@ import numpy as np
 import robosuite as suite
 
 import imitator.utils.tensor_utils as TensorUtils
-from imitator.models.policy_nets import MLPActor, RNNActor
+from imitator.models.policy_nets import MLPActor, RNNActor, TransformerActor
 from imitator.utils.obs_utils import FloatVectorModality
 import imitator.utils.file_utils as FileUtils
 import imitator.utils.env_utils as EnvUtils
@@ -23,11 +23,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-pn", "--project_name", type=str)
     parser.add_argument("-d", "--dataset", type=str)
+    parser.add_argument("-m", "--model", type=str)
     parser.add_argument("-ckpt", "--checkpoint", type=str)
     args = parser.parse_args()
 
-    if args.checkpoint is None:
-        args.checkpoint = FileUtils.get_best_runs(args.project_name, "rnn")
 
     dataset_path = (
         args.dataset
@@ -37,6 +36,8 @@ if __name__ == "__main__":
         )
     )
     config = FileUtils.get_config_from_project_name(args.project_name)
+    if args.checkpoint is None:
+        args.checkpoint = FileUtils.get_best_runs(args.project_name, args.model)
     config.network.policy.checkpoint = args.checkpoint
     config.project_name = args.project_name
     config.dataset_path = dataset_path
@@ -48,12 +49,15 @@ if __name__ == "__main__":
     ]
     for image_obs in image_obs_keys:
         if config.obs[image_obs].obs_encoder.model_path is None:
+            # if config.obs[image_obs].obs_encoder.pretrained:
+            #     continue
             obs_default_model_path = os.path.join(
                 FileUtils.get_models_folder(args.project_name),
                 f"{image_obs}_model.pth",
             )
-            if config.obs[image_obs].obs_encoder.pretrained:
-                continue
+            print(obs_default_model_path)
+
+            config.obs[image_obs].obs_encoder.model_path = obs_default_model_path
             if not os.path.exists(obs_default_model_path):
                 raise ValueError(
                     f"Model for {image_obs} does not exist. Please specify a model path in config file."
@@ -80,8 +84,7 @@ if __name__ == "__main__":
 
             if i == 99:
                 env.reset()
-                if policy_executor.actor_type == RNNActor:
-                    policy_executor.reset()
+                policy_executor.reset()
 
             env.render()  # render on display
 

@@ -10,6 +10,7 @@ import torch.nn as nn
 
 import imitator.utils.tensor_utils as TensorUtils
 from imitator.models.base_nets import *
+from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder
 
 from torchvision import transforms as T
 
@@ -237,7 +238,7 @@ class ImageModalityEncoder(ModalityEncoderBase):
 
         self.input_dim = cfg.obs_encoder.input_dim
         self.output_dim = cfg.obs_encoder.output_dim
-        self.pretrained = cfg.obs_encoder.pretrained
+        self.trainable = cfg.obs_encoder.trainable
         self.has_decoder = cfg.obs_encoder.has_decoder
         self.encoder_model = cfg.obs_encoder.model
         self.freeze = cfg.obs_encoder.freeze
@@ -272,7 +273,7 @@ class ImageModalityEncoder(ModalityEncoderBase):
         # test = self.model.process_obs
         # self.modality.set_obs_processor(test)
 
-        if self.pretrained:
+        if not self.trainable:
             if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:
                 self.model.load_state_dict(
                     torch.load(cfg.obs_encoder.model_path)

@@ -16,7 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
 from imitator.utils.datasets import SequenceDataset
-from imitator.models.base_nets import AutoEncoder, VariationalAutoEncoder
+from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder
 from imitator.utils.obs_utils import GaussianNoise, concatenate_image
 
 
