@@ -1,0 +1,115 @@
+ros:
+  rate: 10
+  action_type: "end_effector" # end_effector (x,y,z,r,p,y), angle_vector (seq of joint angle)
+  joints: ["test"]
+  message_filters:
+    slop: 0.1
+    queue_size: 1000
+
+obs: # input into policy
+  agentview_image:
+    modality: "ImageModality"
+    normalize: False
+    obs_encoder:
+      model: "VariationalAutoEncoder"
+      model_path: null
+      model_kwargs:
+        input_size: [224, 224]
+        input_channel: 3
+        channels: [8, 16, 32, 64, 128, 256]
+        encoder_kernel_sizes: [3, 3, 3, 3, 3, 3]
+        decoder_kernel_sizes: [3, 4, 4, 4, 4, 4]
+        strides: [2, 2, 2, 2, 2, 2]
+        paddings: [1, 1, 1, 1, 1, 1]
+        latent_dim: 32
+      # pretrained: True
+      trainable: False
+      input_dim: [224, 224, 3]
+      layer_dims: null # passing latent to mlp like [256, 128]
+      activation: "ReLU" # [ReLU, Tanh...]
+      output_dim: 32
+      has_decoder: True
+      freeze: True
+  robot0_eye_in_hand_image:
+    modality: "ImageModality"
+    normalize: False
+    obs_encoder:
+      model: "VariationalAutoEncoder"
+      model_path: null
+      model_kwargs:
+        input_size: [224, 224]
+        input_channel: 3
+        channels: [8, 16, 32, 64, 128, 256]
+        encoder_kernel_sizes: [3, 3, 3, 3, 3, 3]
+        decoder_kernel_sizes: [3, 4, 4, 4, 4, 4]
+        strides: [2, 2, 2, 2, 2, 2]
+        paddings: [1, 1, 1, 1, 1, 1]
+        latent_dim: 32
+      # pretrained: True
+      trainable: False
+      input_dim: [224, 224, 3]
+      layer_dims: null
+      activation: "ReLU" # [ReLU, Tanh...]
+      output_dim: 32
+      has_decoder: True
+      freeze: True
+  robot0_eef_pos:
+    modality: "FloatVectorModality"
+    normalize: True
+    obs_encoder:
+      input_dim: 3
+      output_dim: 3
+      layer_dims: null
+      activation: "ReLU" # [ReLU, Tanh...]
+  robot0_eef_quat:
+    modality: "FloatVectorModality"
+    normalize: True
+    obs_encoder:
+      input_dim: 4
+      output_dim: 4
+      layer_dims: null
+      activation: "ReLU" # [ReLU, Tanh...]
+  robot0_gripper_qpos:
+    modality: "FloatVectorModality"
+    normalize: True
+    obs_encoder:
+      input_dim: 2
+      output_dim: 2
+      layer_dims: null
+      activation: "ReLU" # [ReLU, Tanh...]
+actions:
+  modality: "FloatVectorModality"
+  dim: 7
+  normalize: True
+
+network:
+  policy:
+    model: "RNNActor"
+    model_path: null
+    rnn:
+      type: "LSTM"
+      rnn_num_layers: 2
+      rnn_hidden_dim: 1000
+      seq_length: 20
+    mlp_layer_dims: [128, 64, 32]
+    mlp_activation: "ReLU"
+    train:
+      lr: 1e-4
+      lr_scheduler: True
+      optimizer: "Adam"
+      batch_size: 128
+      seq_length: 10 # equal to rnn seq_length if RNNActor
+      weight:
+        l1: 0.0
+        l2: 1.0
+
+dataset:
+  dataset_keys: ["actions"]
+  load_next_obs: True
+  frame_stack: 1
+  pad_frame_stack: True
+  pad_seq_length: True
+  get_pad_mask: False
+  goal_mode: null
+  hdf5_cache_mode: null
+  hdf5_use_swmr: True
