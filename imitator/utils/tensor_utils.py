@@ -4,7 +4,7 @@ import collections
 from typing import List, Tuple, Dict, Union, Any, Callable, Optional
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image as PILImage
 
 
 # def recursive_apply(x , type_fn_dict):

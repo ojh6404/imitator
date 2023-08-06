@@ -7,7 +7,7 @@ from collections import OrderedDict
 import numpy as np
 from typing import Optional, Union, Tuple, List, Dict
 
-from PIL import Image
+from PIL import Image as PILImage
 
 import torch
 import torch.nn as nn
