@@ -20,7 +20,6 @@ from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder
 from imitator.utils.obs_utils import concatenate_image, AddGaussianNoise, RGBShifter
 
 from torchvision import transforms as T
-import albumentations as A
 
 # verify model
 @torch.no_grad()
