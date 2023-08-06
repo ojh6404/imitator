@@ -169,8 +169,13 @@ def main(args):
         batch_image = batch_image.contiguous().float() / 255.0
         noise_added = transform(batch_image).contiguous()
 
-        # revocery = (noise_added.detach().cpu().numpy() * 255).astype(np.uint8)
-        # cv2.imshow("verify", cv2.cvtColor(revocery[0].transpose(1, 2, 0), cv2.COLOR_RGB2BGR))
+        # debug for verify data augmentation, concatenate 2 images original and augmented
+        # recovery = (noise_added.detach().cpu().numpy() * 255).astype(np.uint8)
+        # recovery = recovery[0].transpose(1, 2, 0)
+        # original = (batch_image.detach().cpu().numpy() * 255).astype(np.uint8)
+        # original = original[0].transpose(1, 2, 0)
+        # cv2.imshow("original", cv2.cvtColor(original, cv2.COLOR_RGB2BGR))
+        # cv2.imshow("augmented", cv2.cvtColor(recovery, cv2.COLOR_RGB2BGR))
         # cv2.waitKey(0)
 
 
