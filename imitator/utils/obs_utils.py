@@ -55,17 +55,49 @@ def concatenate_image(
     image = np.concatenate([image1, image2], axis=1)
     return image
 
+class AddGaussianNoise(object):
+    def __init__(self, mean=0., std=1.0, p=0.5):
+        self.std = std
+        self.mean = mean
+        self.p = p
 
-def GaussianNoise(img):
-    assert isinstance(img, torch.Tensor)
-    dtype = img.dtype
-    if not img.is_floating_point():
-        img = img.to(torch.float32)
-    sigma = 25.0
-    out = img + sigma * torch.randn_like(img)
-    if out.dtype != dtype:
-        out = out.to(dtype)
-    return out
+    def __call__(self, tensor):
+        if torch.rand(1) < self.p:
+            # tensor = tensor + torch.randn(tensor.size()) * self.std + self.mean
+            tensor = tensor + torch.randn(tensor.size()).to(tensor.device) * self.std + self.mean
+            # # clip to [0, 1]
+            tensor = torch.clamp(tensor, 0., 1.)
+            return tensor
+
+        return tensor
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(mean={0}, std={1}, p={2})'.format(self.mean, self.std, self.p)
+
+class RGBShifter(object):
+    """
+    Input is (B, C, H, W) or  (C, H, W) [0, 1] float tensor
+    """
+    def __init__(self, r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=0.5):
+        self.r_shift_limit = r_shift_limit
+        self.g_shift_limit = g_shift_limit
+        self.b_shift_limit = b_shift_limit
+        self.p = p
+
+    def __call__(self, tensor):
+        if torch.rand(1) < self.p:
+            r_shift = torch.rand(1) * self.r_shift_limit * 2 - self.r_shift_limit #
+            g_shift = torch.rand(1) * self.g_shift_limit * 2 - self.g_shift_limit
+            b_shift = torch.rand(1) * self.b_shift_limit * 2 - self.b_shift_limit
+            tensor[0] += r_shift.to(tensor.device)
+            tensor[1] += g_shift.to(tensor.device)
+            tensor[2] += b_shift.to(tensor.device)
+            # clip to [0, 1]
+            tensor = torch.clamp(tensor, 0., 1.)
+        return tensor
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(r_shift_limit={0}, g_shift_limit={1}, b_shift_limit={2}, p={3})'.format(self.r_shift_limit, self.g_shift_limit, self.b_shift_limit, self.p)
 
 
 class Modality(ABC, nn.Module):

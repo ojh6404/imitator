@@ -415,10 +415,10 @@ class VariationalAutoEncoder(VisionModule):
         )
         return kl_loss
 
-    def loss(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def loss(self, x: torch.Tensor, ground_truth: torch.Tensor) -> torch.Tensor:
         loss_dict = dict()
         x_hat, z, mu, logvar = self.forward(x)
-        reconstruction_loss = nn.MSELoss()(x_hat, x)
+        reconstruction_loss = nn.MSELoss()(x_hat, ground_truth)
         kld_loss = self.kld_loss(mu, logvar)
         loss_dict["reconstruction_loss"] = reconstruction_loss
         loss_dict["kld_loss"] = kld_loss

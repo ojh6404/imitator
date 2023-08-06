@@ -17,8 +17,10 @@ import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
 from imitator.utils.datasets import SequenceDataset
 from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder
-from imitator.utils.obs_utils import GaussianNoise, concatenate_image
+from imitator.utils.obs_utils import concatenate_image, AddGaussianNoise, RGBShifter
 
+from torchvision import transforms as T
+import albumentations as A
 
 # verify model
 @torch.no_grad()
@@ -55,7 +57,7 @@ def main(args):
         args.dataset
         if args.dataset
         else os.path.join(
-            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
+            FileUtils.get_project_folder(args.project_name), "data/image_dataset.hdf5"
         )
     )
     obs_key = args.obs_key
@@ -66,6 +68,19 @@ def main(args):
             FileUtils.get_models_folder(args.project_name),
             obs_key + "_model.pth",
         )
+
+    # data augmentation
+    #
+    transform = T.Compose(
+        [
+            AddGaussianNoise(mean=0.0, std=0.1, p=0.5),
+            # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
+            RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=0.5),
+            T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2))], p=0.5),
+            # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
+        ]
+    )
+
 
     dataset = SequenceDataset(
         hdf5_path=hdf5_path,
@@ -82,6 +97,8 @@ def main(args):
         hdf5_use_swmr=True,
     )
 
+    print("Dataset size: ", len(dataset))
+
     data_loader = DataLoader(
         dataset=dataset,
         sampler=None,  # no custom sampling logic (uniform sampling)
@@ -89,6 +106,7 @@ def main(args):
         shuffle=True,
         num_workers=0,
         drop_last=True,  # don't provide last batch in dataset pass if it's less than 100 in size
+        # collate_fn= # TODO collate fn to numpy ndarray
     )
 
     model = eval(config.obs[obs_key].obs_encoder.model)(
@@ -150,9 +168,15 @@ def main(args):
             0, 3, 1, 2
         )  # (B, C, H, W)
         batch_image = batch_image.contiguous().float() / 255.0
+        noise_added = transform(batch_image).contiguous()
+
+        # revocery = (noise_added.detach().cpu().numpy() * 255).astype(np.uint8)
+        # cv2.imshow("verify", cv2.cvtColor(revocery[0].transpose(1, 2, 0), cv2.COLOR_RGB2BGR))
+        # cv2.waitKey(0)
+
 
         loss_sum = 0
-        loss_dict = model.loss(batch_image)
+        loss_dict = model.loss(x=noise_added, ground_truth=batch_image)
         for loss in loss_dict.values():
             loss_sum += loss
 
