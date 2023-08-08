@@ -5,7 +5,7 @@ import os
 import argparse
 import numpy as np
 import yaml
-from easydict import EasyDict as edict
+from omegaconf import OmegaConf
 from collections import OrderedDict
 
 from imitator.utils import file_utils as FileUtils
@@ -80,11 +80,15 @@ def main(args):
         yaml_data["obs"][obs]["max"] = obs_max_buf[obs].tolist()
         yaml_data["obs"][obs]["min"] = obs_min_buf[obs].tolist()
 
-    yaml_file = open(
-        os.path.join(FileUtils.get_config_folder(args.project_name), "normalize.yaml"), "w"
-    )
-    yaml.dump(yaml_data, yaml_file, default_flow_style=None)
-    yaml_file.close()
+    # yaml_file = open(
+    #     os.path.join(FileUtils.get_config_folder(args.project_name), "normalize.yaml"), "w"
+    # )
+
+    normalize_cfg = OmegaConf.create(yaml_data)
+    OmegaConf.save(normalize_cfg, os.path.join(FileUtils.get_config_folder(args.project_name), "normalize.yaml"))
+
+    # yaml.dump(yaml_data, yaml_file, default_flow_style=None)
+    # yaml_file.close()
 
 
 if __name__ == "__main__":

@@ -3,7 +3,6 @@
 import os
 import argparse
 from imitator.models.base_nets import Normalize, Unnormalize
-import yaml
 import time
 
 import numpy as np
@@ -13,7 +12,6 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from easydict import EasyDict as edict
 
 from imitator.utils.datasets import SequenceDataset
 from imitator.models.policy_nets import MLPActor, RNNActor, TransformerActor

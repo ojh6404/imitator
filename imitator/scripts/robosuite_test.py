@@ -11,8 +11,6 @@ import imitator.utils.env_utils as EnvUtils
 from imitator.utils.env_utils import RobosuiteRollout
 from imitator.utils.obs_utils import get_normalize_params
 
-from easydict import EasyDict as edict
-import yaml
 import argparse
 import torch
 

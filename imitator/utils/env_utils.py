@@ -10,7 +10,6 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import yaml
-from easydict import EasyDict as edict
 from omegaconf import OmegaConf
 from tqdm import tqdm
 from collections import OrderedDict
