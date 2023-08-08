@@ -30,8 +30,8 @@ def verify(model, dataset, obs_key="image"):
     random_index = np.random.randint(0, len(dataset))
     test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray (H, W, C)
 
-    test_image_tensor = TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
-    test_image_tensor = test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2)  # (1, C, H, W)
+    test_image_tensor =  TensorUtils.to_float(TensorUtils.to_device(TensorUtils.to_tensor(test_image), device))
+    test_image_tensor = test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2).contiguous() # (1, C, H, W)
     if args.model == "ae":
         x, z = model(test_image_tensor)
     elif args.model == "vae":
