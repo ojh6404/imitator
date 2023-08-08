@@ -1,7 +1,3 @@
-"""
-This file contains Dataset classes that are used by torch dataloaders
-to fetch batches from hdf5 files.
-"""
 import os
 import h5py
 import numpy as np

@@ -67,7 +67,6 @@ def main(args):
         )
 
     # data augmentation
-    #
     transform = T.Compose(
         [
             AddGaussianNoise(mean=0.0, std=0.1, p=0.5),
