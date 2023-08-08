@@ -2,42 +2,53 @@
 
 import argparse
 
-from imitator.utils.datasets import SequenceDataset
+from imitator.utils.datasets import ImageDataset, SequenceDataset
 
+from torch.utils.data import DataLoader
+
+import cv2
+import torch
+import numpy as np
 
 def main(args):
 
-    datasets = SequenceDataset(
+    datasets = ImageDataset(
         hdf5_path=args.dataset,
-        obs_keys=["robot0_eef_pos"],
-        dataset_keys=["actions"],
-        frame_stack=10,
-        seq_length=1,
-        pad_frame_stack=True,
-        pad_seq_length=True,
-        get_pad_mask=False,
-        goal_mode=None,
-        hdf5_cache_mode="all",
+        obs_keys=["image"],
+        hdf5_cache_mode=True,
         hdf5_use_swmr=True,
-        filter_by_attribute=None,
-        load_next_obs=True,
         )
 
 
-    # testing the frame stack
-    first_stack = datasets[0]["actions"] # 10, 7
-    second_stack = datasets[1]["actions"] # 10, 7
-    third_stack = datasets[2]["actions"] # 10, 7
+    data = datasets[0]
 
-    diff = first_stack[1:] - second_stack[:-1]
-    print(diff)
+    print(data["obs"]["image"].shape)
 
-    print("first stack")
-    print(first_stack)
-    print("second stack")
-    print(second_stack)
-    print("third stack")
-    print(third_stack)
+    data_loader = DataLoader(
+        dataset=datasets,
+        sampler=None,  # no custom sampling logic (uniform sampling)
+        batch_size=5,  # batches of size 100
+        shuffle=True,
+        num_workers=0,
+        drop_last=True,  # don't provide last batch in dataset pass if it's less than 100 in size
+        # collate_fn= # TODO collate fn to numpy ndarray
+    )
+
+    for epoch in range(3):  # epoch numbers start at 1
+        data_loader_iter = iter(data_loader)
+        try:
+            batch = next(data_loader_iter)
+        except StopIteration:
+            data_loader_iter = iter(data_loader)
+            batch = next(data_loader_iter)
+
+        print(batch["obs"]["image"].shape)
+
+        for image in batch["obs"]["image"]:
+            image = image.numpy()
+            cv2.imshow("image", image)
+            cv2.waitKey(0)
+
 
 
 

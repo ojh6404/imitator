@@ -12,24 +12,205 @@ import torch.utils.data
 import imitator.utils.file_utils as FileUtils
 import imitator.utils.tensor_utils as TensorUtils
 
+from typing import List, Tuple, Dict, Any, Union, Optional
+
+
+class ImageDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        hdf5_path: str,
+        obs_keys: Union[List[str], Tuple[str]],
+        hdf5_cache_mode:bool=False,
+        hdf5_use_swmr=True,
+    ) -> None:
+        super(ImageDataset, self).__init__()
+
+        self.hdf5_path = os.path.expanduser(hdf5_path)
+        self.hdf5_use_swmr = hdf5_use_swmr
+        self._hdf5_file = None
+
+        self.hdf5_cache_mode = hdf5_cache_mode
+
+        # get all keys that needs to be fetched
+        self.obs_keys = tuple(obs_keys)
+
+        # load dataset info
+        self.load_demo_info()
+
+        # maybe store dataset in memory for fast access
+        if self.hdf5_cache_mode:
+            self.obs_keys_in_memory = self.obs_keys
+            self.hdf5_cache = self.load_dataset_in_memory(
+                demo_list=self.demos,
+                hdf5_file=self.hdf5_file,
+                obs_keys=self.obs_keys_in_memory,
+            )
+
+            print("ImageDataset: caching get_item calls...")
+            self.getitem_cache = [
+                self.get_item(i)
+                for i in tqdm(range(len(self)))
+            ]
+            # don't need the previous cache anymore
+            del self.hdf5_cache
+            self.hdf5_cache = None
+        else:
+            self.hdf5_cache = None
+
+        self.close_and_delete_hdf5_handle()
+
+    def load_demo_info(self):
+        self.demos = FileUtils.sort_names_by_number(
+            list(self.hdf5_file["data"].keys())
+        )
+        self.n_demos = len(self.demos)
+
+        self._index_to_demo_id = dict()  # maps every index to a demo id
+        self._demo_id_to_start_indices = dict()  # gives start index per demo id
+        self._demo_id_to_demo_length = dict()
+
+        # determine index mapping
+        self.total_num_data = 0
+        for ep in self.demos:
+            demo_length = self.hdf5_file["data/{}".format(ep)].attrs["num_samples"]
+            self._demo_id_to_start_indices[ep] = self.total_num_data
+            self._demo_id_to_demo_length[ep] = demo_length
+            for _ in range(demo_length):
+                self._index_to_demo_id[self.total_num_data] = ep
+                self.total_num_data += 1
+
+
+
+    @property
+    def hdf5_file(self):
+        """
+        This property allows for a lazy hdf5 file open.
+        """
+        if self._hdf5_file is None:
+            self._hdf5_file = h5py.File(
+                self.hdf5_path, "r", swmr=self.hdf5_use_swmr, libver="latest"
+            )
+        return self._hdf5_file
+
+    def close_and_delete_hdf5_handle(self):
+        """
+        Maybe close the file handle.
+        """
+        if self._hdf5_file is not None:
+            self._hdf5_file.close()
+        self._hdf5_file = None
+
+    @contextmanager
+    def hdf5_file_opened(self):
+        """
+        Convenient context manager to open the file on entering the scope
+        and then close it on leaving.
+        """
+        should_close = self._hdf5_file is None
+        yield self.hdf5_file
+        if should_close:
+            self.close_and_delete_hdf5_handle()
+
+    def __del__(self):
+        self.close_and_delete_hdf5_handle()
+
+    def __len__(self):
+        return self.total_num_data
+
+    def load_dataset_in_memory(self, demo_list, hdf5_file, obs_keys):
+        all_data = dict()
+        print("ImageDataset: loading dataset into memory...")
+        for ep in tqdm(demo_list):
+            all_data[ep] = {}
+            all_data[ep]["attrs"] = {}
+            all_data[ep]["attrs"]["num_samples"] = hdf5_file[
+                "data/{}".format(ep)
+            ].attrs["num_samples"]
+            # get obs
+            all_data[ep]["obs"] = {
+                k: hdf5_file["data/{}/obs/{}".format(ep, k)][()] for k in obs_keys
+            }
+
+        return all_data
+
+    def get_dataset_for_ep(self, ep, key):
+        """
+        Helper utility to get a dataset for a specific demonstration.
+        Takes into account whether the dataset has been loaded into memory.
+        """
+
+        # check if this key should be in memory
+        key_should_be_in_memory = self.hdf5_cache_mode
+        if key_should_be_in_memory:
+            # if key is an observation, it may not be in memory
+            if "/" in key:
+                key1, key2 = key.split("/")
+                assert key1 == "obs"
+                if key2 not in self.obs_keys_in_memory:
+                    key_should_be_in_memory = False
+
+        if key_should_be_in_memory:
+            # read from cache
+            if "/" in key:
+                key1, key2 = key.split("/")
+                assert key1 == "obs"
+                ret = self.hdf5_cache[ep][key1][key2]
+            else:
+                ret = self.hdf5_cache[ep][key]
+        else:
+            # read from file
+            hd5key = "data/{}/{}".format(ep, key)
+            ret = self.hdf5_file[hd5key]
+        return ret
+
+    def __getitem__(self, index):
+        if self.hdf5_cache_mode:
+            return self.getitem_cache[index]
+        return self.get_item(index)
+
+    def get_item(self, index):
+        """
+        Main implementation of getitem when not using cache.
+        """
+        demo_id = self._index_to_demo_id[index]
+        demo_start_index = self._demo_id_to_start_indices[demo_id]
+        index_in_demo = index - demo_start_index
+
+        data = dict()
+        data["obs"] = dict()
+        for obs_key in self.obs_keys:
+            data["obs"][obs_key] = self.get_dataset_for_ep(demo_id, "obs/{}".format(obs_key))[index_in_demo]
+        return data
+
+    def get_dataset_sampler(self):
+        """
+        Return instance of torch.utils.data.Sampler or None. Allows
+        for dataset to define custom sampling logic, such as
+        re-weighting the probability of samples being drawn.
+        See the `train` function in scripts/train.py, and torch
+        `DataLoader` documentation, for more info.
+        """
+        return None
+
+
 
 class SequenceDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        hdf5_path,
-        obs_keys,
-        dataset_keys,
-        frame_stack=1,
-        seq_length=1,
-        pad_frame_stack=True,
-        pad_seq_length=True,
-        get_pad_mask=False,
-        goal_mode=None,
-        hdf5_cache_mode=None,
-        hdf5_use_swmr=True,
-        filter_by_attribute=None,
-        load_next_obs=True,
-    ):
+        hdf5_path: str,
+        obs_keys: Union[Tuple[str], List[str]],
+        dataset_keys: Union[Tuple[str], List[str]],
+        frame_stack:int=1,
+        seq_length:int=1,
+        pad_frame_stack:bool=True,
+        pad_seq_length:bool=True,
+        get_pad_mask:bool=False,
+        goal_mode:Optional[str]=None,
+        hdf5_cache_mode:Optional[str]=None,
+        hdf5_use_swmr:bool=True,
+        filter_by_attribute:Optional[str]=None,
+        load_next_obs:bool=True,
+    ) -> None:
         """
         Dataset class for fetching sequences of experience.
         Length of the fetched sequence is equal to (@frame_stack - 1 + @seq_length)
@@ -67,10 +248,6 @@ class SequenceDataset(torch.utils.data.Dataset):
 
             hdf5_use_swmr (bool): whether to use swmr feature when opening the hdf5 file. This ensures
                 that multiple Dataset instances can all access the same hdf5 file without problems.
-
-            hdf5_normalize_obs (bool): if True, normalize observations by computing the mean observation
-                and std of each observation (in each dimension and modality), and normalizing to unit
-                mean and variance in each dimension.
 
             filter_by_attribute (str): if provided, use the provided filter key to look up a subset of
                 demonstrations to load

@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
-from imitator.utils.datasets import SequenceDataset
+from imitator.utils.datasets import ImageDataset
 from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder
 from imitator.utils.obs_utils import concatenate_image, AddGaussianNoise, RGBShifter
 
@@ -25,15 +25,13 @@ from torchvision import transforms as T
 @torch.no_grad()
 def verify(model, dataset, obs_key="image"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
     model.eval()
     random_index = np.random.randint(0, len(dataset))
-    test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray [B,H,W,C]
+    test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray (H, W, C)
 
-    test_image_numpy = test_image.squeeze(0).astype(np.uint8)
     test_image_tensor = TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
-    test_image_tensor = (
-        test_image_tensor.permute(0, 3, 1, 2).float().contiguous() / 255.0
-    )
+    test_image_tensor = test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2)  # (1, C, H, W)
     if args.model == "ae":
         x, z = model(test_image_tensor)
     elif args.model == "vae":
@@ -42,7 +40,7 @@ def verify(model, dataset, obs_key="image"):
     test_image_recon = (
         TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
     ).astype(np.uint8)
-    concat_image = concatenate_image(test_image_numpy, test_image_recon)
+    concat_image = concatenate_image(test_image, test_image_recon)
     concat_image = cv2.cvtColor(concat_image, cv2.COLOR_RGB2BGR)
     print("Embedding shape: ", z.shape)
     cv2.imshow("verify", concat_image)
@@ -81,18 +79,10 @@ def main(args):
     )
 
 
-    dataset = SequenceDataset(
+    dataset = ImageDataset(
         hdf5_path=hdf5_path,
         obs_keys=[obs_key],  # observations we want to appear in batches
-        dataset_keys=config.dataset.dataset_keys,
-        load_next_obs=False,
-        frame_stack=1,
-        seq_length=1,  # length-10 temporal sequences
-        pad_frame_stack=True,
-        pad_seq_length=True,  # pad last obs per trajectory to ensure all sequences are sampled
-        get_pad_mask=False,
-        goal_mode=None,
-        hdf5_cache_mode="all",  # cache dataset in memory to avoid repeated file i/o
+        hdf5_cache_mode=True,  # cache dataset in memory to avoid repeated file i/o
         hdf5_use_swmr=True,
     )
 
@@ -162,10 +152,8 @@ def main(args):
             data_loader_iter = iter(data_loader)
             batch = next(data_loader_iter)
 
-        batch_image = TensorUtils.to_device(batch["obs"][obs_key], device)
-        batch_image = batch_image.reshape(-1, *batch_image.shape[2:]).permute(
-            0, 3, 1, 2
-        )  # (B, C, H, W)
+        batch_image = TensorUtils.to_device(batch["obs"][obs_key], device) # (B, H, W, C)
+        batch_image = batch_image.permute(0, 3, 1, 2)  # (B, C, H, W)
         batch_image = batch_image.contiguous().float() / 255.0
         noise_added = transform(batch_image).contiguous()
 
