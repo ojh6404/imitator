@@ -14,8 +14,7 @@ from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder
 
 from torchvision import transforms as T
 
-from typing import Union, List, Tuple, Dict, Any, Optional
-
+from typing import Union, List, Tuple, Dict
 
 # fucntion that get mean and std from max and min
 def get_normalize_params(min_val, max_val):
@@ -56,6 +55,7 @@ def concatenate_image(
     return image
 
 class AddGaussianNoise(object):
+
     def __init__(self, mean=0., std=1.0, p=0.5):
         self.std = std
         self.mean = mean
@@ -139,14 +139,6 @@ class Modality(ABC, nn.Module):
 
     def set_obs_unprocessor(self, unprocessor=None):
         self._custom_obs_unprocessor = unprocessor
-
-    # @classmethod
-    # def set_obs_processor(cls, processor=None):
-    #     cls._custom_obs_processor = processor
-
-    # @classmethod
-    # def set_obs_unprocessor(cls, unprocessor=None):
-    #     cls._custom_obs_unprocessor = unprocessor
 
     def process_obs(self, obs: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         if hasattr(self, "_custom_obs_processor"):
@@ -384,7 +376,6 @@ class FloatVectorModalityEncoder(ModalityEncoderBase):
             mean = 0.0
             std = 1.0
 
-        # self.modality = FloatVectorModality(name=obs_name, shape=self.input_dim, mean=mean, std=std)
         super(FloatVectorModalityEncoder, self).__init__(
             obs_name=obs_name,
             modality=FloatVectorModality(
