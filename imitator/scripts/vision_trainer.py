@@ -2,15 +2,14 @@
 import argparse
 import os
 import time
-from tqdm import tqdm
-from collections import OrderedDict
 
 import numpy as np
 import cv2
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 import torch.optim as optim
+from torch.utils.data import DataLoader
+from torch.utils.data import random_split
 from torch.utils.tensorboard import SummaryWriter
 
 import imitator.utils.tensor_utils as TensorUtils
@@ -30,8 +29,9 @@ def verify(model, dataset, obs_key="image"):
     random_index = np.random.randint(0, len(dataset))
     test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray (H, W, C)
 
+
     test_image_tensor =  TensorUtils.to_float(TensorUtils.to_device(TensorUtils.to_tensor(test_image), device))
-    test_image_tensor = test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2).contiguous() # (1, C, H, W)
+    test_image_tensor = test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2).contiguous() / 255.0 # (1, C, H, W)
     if args.model == "ae":
         x, z = model(test_image_tensor)
     elif args.model == "vae":
@@ -48,6 +48,7 @@ def verify(model, dataset, obs_key="image"):
     cv2.destroyAllWindows()
 
 
+
 def main(args):
     device = torch.device(args.device)
     hdf5_path = (
@@ -60,6 +61,7 @@ def main(args):
     obs_key = args.obs_key
     config = FileUtils.get_config_from_project_name(args.project_name)
 
+
     if config.obs[obs_key].obs_encoder.model_path is None:
         config.obs[obs_key].obs_encoder.model_path = os.path.join(
             FileUtils.get_models_folder(args.project_name),
@@ -67,15 +69,16 @@ def main(args):
         )
 
     # data augmentation
-    transform = T.Compose(
-        [
-            AddGaussianNoise(mean=0.0, std=0.1, p=0.5),
-            # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
-            RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=0.5),
-            T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2))], p=0.5),
-            # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
-        ]
-    )
+    if config.obs[obs_key].data_augmentation:
+        transform = T.Compose(
+            [
+                AddGaussianNoise(mean=0.0, std=0.1, p=0.5),
+                # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
+                RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=0.5),
+                T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5),
+                # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
+            ]
+        )
 
 
     dataset = ImageDataset(
@@ -84,6 +87,10 @@ def main(args):
         hdf5_cache_mode=True,  # cache dataset in memory to avoid repeated file i/o
         hdf5_use_swmr=True,
     )
+
+    # train_dataset, valid_dataset = random_split(
+    #     dataset, [int(len(dataset) * args.ratio), len(dataset) - int(len(dataset) * args.ratio)]
+    # )
 
     print("Dataset size: ", len(dataset))
 
@@ -154,20 +161,18 @@ def main(args):
         batch_image = TensorUtils.to_device(batch["obs"][obs_key], device) # (B, H, W, C)
         batch_image = batch_image.permute(0, 3, 1, 2)  # (B, C, H, W)
         batch_image = batch_image.contiguous().float() / 255.0
-        noise_added = transform(batch_image).contiguous()
+        if config.obs[obs_key].data_augmentation:
+            batch_image = transform(batch_image).contiguous()
 
         # debug for verify data augmentation, concatenate 2 images original and augmented
-        # recovery = (noise_added.detach().cpu().numpy() * 255).astype(np.uint8)
-        # recovery = recovery[0].transpose(1, 2, 0)
         # original = (batch_image.detach().cpu().numpy() * 255).astype(np.uint8)
         # original = original[0].transpose(1, 2, 0)
         # cv2.imshow("original", cv2.cvtColor(original, cv2.COLOR_RGB2BGR))
-        # cv2.imshow("augmented", cv2.cvtColor(recovery, cv2.COLOR_RGB2BGR))
         # cv2.waitKey(0)
 
 
         loss_sum = 0
-        loss_dict = model.loss(x=noise_added, ground_truth=batch_image)
+        loss_dict = model.loss(x=batch_image, ground_truth=batch_image)
         for loss in loss_dict.values():
             loss_sum += loss
 
@@ -192,6 +197,7 @@ def main(args):
                 print(
                     f"epoch: {epoch}, loss: {loss:.5g}, recons_loss: {recons_loss:.5g}, kl_loss: {kl_loss:.5g}"
                 )
+            # mkdir if not exist
             torch.save(
                 model.state_dict(),
                 os.path.join(output_dir, args.model + "_model_" + str(epoch) + ".pth"),
@@ -205,6 +211,10 @@ def main(args):
                 os.path.join(output_dir, args.model + "_model_best.pth"),
             )
             # save in models dir
+            os.makedirs(
+                os.path.dirname(config.obs[obs_key].obs_encoder.model_path), exist_ok=True
+                )
+            # get files dir
             torch.save(
                 model.state_dict(),
                 config.obs[obs_key].obs_encoder.model_path,
@@ -236,6 +246,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dataset", type=str)
     parser.add_argument("-e", "--num_epochs", type=int, default=3000)
     parser.add_argument("-b", "--batch_size", type=int, default=128)
+    parser.add_argument("--ratio", type=float, default=0.9)
     parser.add_argument("-m", "--model", type=str, default="ae")
     parser.add_argument("-obs", "--obs_key", type=str, default="image")
     parser.add_argument("--device", type=str, default="cuda:0")
