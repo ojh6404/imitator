@@ -55,7 +55,9 @@ def concatenate_image(
     return image
 
 class AddGaussianNoise(object):
-
+    """
+    Input is (B, C, H, W) or  (C, H, W) [0, 1] float tensor
+    """
     def __init__(self, mean=0., std=1.0, p=0.5):
         self.std = std
         self.mean = mean
@@ -85,13 +87,21 @@ class RGBShifter(object):
         self.p = p
 
     def __call__(self, tensor):
+        # tensor : [B, C, H, W] or [C, H, W]
         if torch.rand(1) < self.p:
             r_shift = torch.rand(1) * self.r_shift_limit * 2 - self.r_shift_limit #
             g_shift = torch.rand(1) * self.g_shift_limit * 2 - self.g_shift_limit
             b_shift = torch.rand(1) * self.b_shift_limit * 2 - self.b_shift_limit
-            tensor[0] += r_shift.to(tensor.device)
-            tensor[1] += g_shift.to(tensor.device)
-            tensor[2] += b_shift.to(tensor.device)
+            if tensor.ndim == 4:
+                tensor[:, 0, :, :] += r_shift.to(tensor.device)
+                tensor[:, 1, :, :] += g_shift.to(tensor.device)
+                tensor[:, 2, :, :] += b_shift.to(tensor.device)
+            elif tensor.ndim == 3:
+                tensor[0, :, :] += r_shift.to(tensor.device)
+                tensor[1, :, :] += g_shift.to(tensor.device)
+                tensor[2, :, :] += b_shift.to(tensor.device)
+            else:
+                raise NotImplementedError
             # clip to [0, 1]
             tensor = torch.clamp(tensor, 0., 1.)
         return tensor

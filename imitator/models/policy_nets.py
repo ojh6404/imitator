@@ -58,8 +58,9 @@ class MLPActor(Actor):
             [cfg.obs[key].obs_encoder.output_dim for key in cfg.obs.keys()]
         ) # sum of all obs_encoder output dims
         self.mlp_kwargs = cfg.network.policy.get("kwargs", {})
-        self.mlp_layer_dims = cfg.network.policy.mlp_layer_dims
-        self.mlp_activation = eval("nn." + cfg.network.policy.get("mlp_activation", "ReLU"))
+        self.mlp_layer_dims = cfg.network.policy.mlp_decoder.layer_dims
+        self.mlp_activation = eval("nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU"))
+        self.decoder_output_activation = nn.Tanh if cfg.network.policy.mlp_decoder.get("squash_output", False) else None
 
         self._build_network()
 
@@ -75,6 +76,7 @@ class MLPActor(Actor):
             layer_dims=self.mlp_layer_dims,
             output_dim=self.action_dim,
             activation=self.mlp_activation,
+            output_activation=self.decoder_output_activation,
         )
 
     def forward(self, obs_dict: Dict[str, torch.Tensor],unnormalize: bool = False,) -> torch.Tensor:
@@ -112,10 +114,9 @@ class RNNActor(Actor):
         self.rnn_kwargs = cfg.network.policy.rnn.get("kwargs", {})
 
         # for rnn decoder
-        self.mlp_layer_dims = cfg.network.policy.mlp_layer_dims
-        self.mlp_activation = eval("nn." + cfg.network.policy.get("mlp_activation", "ReLU"))
-
-        self.freeze = cfg.network.policy.get("freeze", True)
+        self.mlp_layer_dims = cfg.network.policy.mlp_decoder.layer_dims
+        self.mlp_activation = eval("nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU"))
+        self.decoder_output_activation = nn.Tanh if cfg.network.policy.mlp_decoder.get("squash_output", False) else None
 
         self._build_network()
 
@@ -131,6 +132,7 @@ class RNNActor(Actor):
             layer_dims=self.mlp_layer_dims,
             output_dim=self.action_dim,
             activation=self.mlp_activation,
+            output_activation=self.decoder_output_activation,
         )
         self.nets["rnn"] = RNN(
             rnn_input_dim=self.rnn_input_dim,
@@ -226,8 +228,9 @@ class TransformerActor(Actor):
         self.max_timestep = self.context_length
 
         # for transformer decoder
-        self.mlp_layer_dims = cfg.network.policy.mlp_layer_dims
-        self.mlp_activation = eval("nn." + cfg.network.policy.get("mlp_activation", "ReLU"))
+        self.mlp_layer_dims = cfg.network.policy.mlp_decoder.layer_dims
+        self.mlp_activation = eval("nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU"))
+        self.decoder_output_activation = nn.Tanh if cfg.network.policy.mlp_decoder.get("squash_output", False) else None
 
         self.freeze = cfg.network.policy.get("freeze", True)
 
@@ -271,6 +274,7 @@ class TransformerActor(Actor):
             layer_dims=self.mlp_layer_dims,
             output_dim=self.action_dim,
             activation=self.mlp_activation,
+            output_activation=self.decoder_output_activation,
         )
 
     def embed_timesteps(self, embeddings):
@@ -332,4 +336,4 @@ class TransformerActor(Actor):
         like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
         """
         outputs = self.forward(obs_dict, unnormalize=unnormalize) # [B, T, D]
-        return outputs[:, -1, :] # [B, D]
+        return outputs[:, -1, :] # [B, D], last timestep cause it uses framestack

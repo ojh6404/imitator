@@ -29,9 +29,22 @@ def verify(model, dataset, obs_key="image"):
     random_index = np.random.randint(0, len(dataset))
     test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray (H, W, C)
 
+    transform = T.Compose(
+        [
+            AddGaussianNoise(mean=0.0, std=0.1, p=1.0),
+            # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
+            RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=1.0),
+            T.RandomApply([T.RandomResizedCrop(size=test_image.shape[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=1.0),
+            # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
+        ]
+    )
+
 
     test_image_tensor =  TensorUtils.to_float(TensorUtils.to_device(TensorUtils.to_tensor(test_image), device))
     test_image_tensor = test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2).contiguous() / 255.0 # (1, C, H, W)
+    test_image_tensor = transform(test_image_tensor)
+    test_image = (test_image_tensor.detach().cpu().squeeze(0).permute(1, 2, 0).numpy() * 255.0).astype(np.uint8)
+
     if args.model == "ae":
         x, z = model(test_image_tensor)
     elif args.model == "vae":
@@ -75,10 +88,12 @@ def main(args):
                 AddGaussianNoise(mean=0.0, std=0.1, p=0.5),
                 # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
                 RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=0.5),
-                T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5),
+               # T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5),
                 # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
             ]
         )
+
+    random_resize_crop = T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5)
 
 
     dataset = ImageDataset(
@@ -161,15 +176,10 @@ def main(args):
         batch_image = TensorUtils.to_device(batch["obs"][obs_key], device) # (B, H, W, C)
         batch_image = batch_image.permute(0, 3, 1, 2)  # (B, C, H, W)
         batch_image = batch_image.contiguous().float() / 255.0
-        ground_truth = batch_image.clone()
+        batch_image = random_resize_crop(batch_image)
+        ground_truth = batch_image.detach().clone()
         if config.obs[obs_key].data_augmentation:
             batch_image = transform(batch_image).contiguous()
-
-        # debug for verify data augmentation, concatenate 2 images original and augmented
-        # original = (batch_image.detach().cpu().numpy() * 255).astype(np.uint8)
-        # original = original[0].transpose(1, 2, 0)
-        # cv2.imshow("original", cv2.cvtColor(original, cv2.COLOR_RGB2BGR))
-        # cv2.waitKey(0)
 
 
         loss_sum = 0
