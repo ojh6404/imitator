@@ -161,6 +161,7 @@ def main(args):
         batch_image = TensorUtils.to_device(batch["obs"][obs_key], device) # (B, H, W, C)
         batch_image = batch_image.permute(0, 3, 1, 2)  # (B, C, H, W)
         batch_image = batch_image.contiguous().float() / 255.0
+        ground_truth = batch_image.clone()
         if config.obs[obs_key].data_augmentation:
             batch_image = transform(batch_image).contiguous()
 
@@ -172,7 +173,7 @@ def main(args):
 
 
         loss_sum = 0
-        loss_dict = model.loss(x=batch_image, ground_truth=batch_image)
+        loss_dict = model.loss(x=batch_image, ground_truth=ground_truth)
         for loss in loss_dict.values():
             loss_sum += loss
 
