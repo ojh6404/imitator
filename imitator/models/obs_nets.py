@@ -32,6 +32,8 @@ from imitator.models.base_nets import (
     Permute,
     SoftPositionEmbed,
     SlotAttention,
+    CoordConv,
+    SpatialSoftmax,
     MLP,
     CNN,
 )
@@ -641,7 +643,11 @@ class Resnet(VisionModule):
         input_size: List[int] = [224, 224],
         input_channel: int = 3,
         resnet_type: str = "resnet18",  # resnet18, resnet34, resnet50, resnet101, resnet152
-        pretrained: bool = True,
+        input_coord_conv: bool = False,
+        pretrained: bool = False,
+        pool: Optional[str] = "SpatialSoftmax",
+        latent_dim: Optional[int] = None,
+        pool_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         super(Resnet, self).__init__()
 
@@ -649,11 +655,11 @@ class Resnet(VisionModule):
 
         RESNET_TYPES = ["resnet18", "resnet34", "resnet50", "resnet101", "resnet152"]
         RESNET_OUTPUT_DIM = {
-            "resnet18": 512,
-            "resnet34": 512,
-            "resnet50": 2048,
-            "resnet101": 2048,
-            "resnet152": 2048,
+            "resnet18": [512, 7, 7],  # [2048, 7, 7
+            "resnet34": [512, 7, 7],
+            "resnet50": [2048, 7, 7],
+            "resnet101": [2048, 7, 7],
+            "resnet152": [2048, 7, 7],
         }
 
         assert (
@@ -673,18 +679,61 @@ class Resnet(VisionModule):
             weights = None
 
         self.nets = nn.ModuleDict()
-        self.nets["encoder"] = getattr(vision_models, resnet_type)(
-            progress=True, weights=weights
+        resnet = getattr(vision_models, resnet_type)(
+            weights=weights
         )
-        self.nets["encoder"].fc = nn.Identity()  # remove the last fc layer
-        self.output_dim = RESNET_OUTPUT_DIM[resnet_type]
-        self.preprocess = RESNET_WEIGHTS[resnet_type].transforms()
+
+        if input_coord_conv:
+            resnet.conv1 = CoordConv(
+                input_channel,
+                64,
+                kernel_size=7,
+                stride=2,
+                padding=3,
+                bias=False,
+            )
+        elif input_channel != 3:
+            resnet.conv1 = nn.Conv2d(
+                input_channel,
+                64,
+                kernel_size=7,
+                stride=2,
+                padding=3,
+                bias=False,
+            )
+
+        pool_kwargs.update({"input_shape": RESNET_OUTPUT_DIM[resnet_type]})
+        if pool is not None:
+            self.pool = eval(pool)(**pool_kwargs)
+        else:
+            self.pool = None
+
+        resnet_conv = list(resnet.children())[:-2] # [B] + RESNET_OUTPUT_DIM[resnet_type]
+
+        encoder_list = []
+        encoder_list.extend(resnet_conv)
+        if self.pool is not None:
+            encoder_list.append(self.pool)
+        encoder_list.append(nn.Flatten(start_dim=1, end_dim=-1))
+        if latent_dim is not None:
+            if self.pool is not None:
+                encoder_list.append(nn.Linear(np.prod(self.pool.output_dim), latent_dim))
+            else:
+                encoder_list.append(nn.Linear(np.prod(RESNET_OUTPUT_DIM[resnet_type]), latent_dim))
+        self.nets["encoder"] = nn.Sequential(*encoder_list)
+
+        self.output_dim = latent_dim if latent_dim is not None else np.prod(RESNET_OUTPUT_DIM[resnet_type])
+        if pretrained:
+            self.preprocess = RESNET_WEIGHTS[resnet_type].transforms()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x expected to be [B, C, H, W] with C=3 and torch tensor of uint8
-        x = self.preprocess(x)
+        if hasattr(self, "preprocess"):
+            x = self.preprocess(x)
         x = self.nets["encoder"](x)
         return x
+
+
 
 
 class R3M(VisionModule):
@@ -856,3 +905,20 @@ class MVP(VisionModule):
         inputs = TensorUtils.to_tensor(inputs)
         inputs = self.transform(inputs)
         return inputs
+
+
+if __name__=="__main__":
+
+    test_input = torch.randn(5, 3, 224, 224)
+    pool_kwargs = dict(
+        num_kp=32,
+        temperature=1.0,
+        learnable_temperature=False,
+        output_variance=False,
+        noise_std=0.0,
+
+    )
+    resnet_encoder = Resnet(pool="SpatialSoftmax",pool_kwargs=pool_kwargs,latent_dim=64)
+
+    test_output = resnet_encoder(test_input)
+    print(test_output.shape)

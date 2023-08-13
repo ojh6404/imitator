@@ -68,7 +68,7 @@ def main(args):
                 f"{image_obs}_model.pth",
             )
             if not os.path.exists(obs_default_model_path):
-                if config.obs[image_obs].obs_encoder.pretrained:
+                if config.obs[image_obs].obs_encoder.trainable:
                     print("Use pretrained model")
                 else:
                     raise ValueError(

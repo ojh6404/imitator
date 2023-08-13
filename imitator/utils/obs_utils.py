@@ -10,7 +10,7 @@ import torch.nn as nn
 
 import imitator.utils.tensor_utils as TensorUtils
 from imitator.models.base_nets import *
-from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder
+from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder, Resnet
 
 from torchvision import transforms as T
 
@@ -279,10 +279,22 @@ class ImageModalityEncoder(ModalityEncoderBase):
         self.model_kwargs = cfg.obs_encoder.model_kwargs
         self.activation = eval("nn." + cfg.get("activation", "ReLU"))
 
-        if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:
+        MEAN = [0.485, 0.456, 0.406]
+        STD = [0.229, 0.224, 0.225]
+
+        # normalization spec
+        # original : [0, 255]
+        # if [0, 1] : mean = 0.0, std = 1.0
+        # if [-1, 1] : mean = 255.0 / 2.0, std = 255.0 / 2.0
+        # if normalize with MEAN and STD after [0, 1] : mean = 255 * MEAN, std = 255 * STD
+        if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]: # TODO
             mean = 0.0
             std = 255.0
+        elif self.encoder_model == "Resnet":
+            mean = np.array(MEAN) * 255.0
+            std = np.array(STD) * 255.0
         else:
+            # do not normalize
             mean = 0.0
             std = 1.0
 
@@ -294,7 +306,7 @@ class ImageModalityEncoder(ModalityEncoderBase):
             ),
         )
 
-        if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:  # TODO
+        if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]: # TODO
             self.model = eval(self.encoder_model)(
                 input_size=cfg.obs_encoder.input_dim[:2],
                 input_channel=cfg.obs_encoder.input_dim[2],

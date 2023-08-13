@@ -62,14 +62,17 @@ class Normalize(nn.Module):
     ) -> None:
         super(Normalize, self).__init__()
         # requires_grad = False
-        self._mean = TensorUtils.to_float(TensorUtils.to_tensor(mean))
-        self._std = TensorUtils.to_float(TensorUtils.to_tensor(std))
+        self._mean = TensorUtils.to_float(TensorUtils.to_tensor(mean)) # scalar or [3]
+        self._std = TensorUtils.to_float(TensorUtils.to_tensor(std)) # scalar or [3]
 
         self.register_buffer("mean", self._mean)
         self.register_buffer("std", self._std)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if len(x.shape) == 4: # [B, C, H, W]
+            return (x - self.mean[None, :, None, None]) / self.std[None, :, None, None]
         return (x - self.mean) / self.std
+
 
 
 class Unnormalize(nn.Module):
@@ -447,6 +450,53 @@ class CNN(nn.Module):
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         return self.net(inputs)
 
+class CoordConv(nn.Conv2d, nn.Module):
+    def __init__(
+            self,
+            input_channel: int = 3,
+            output_channel: int = 64,
+            kernerl_size: int = 3,
+            stride: int = 1,
+            padding: int = 0,
+            dilation: int = 1,
+            groups: int = 1,
+            bias: bool = True,
+            padding_mode: str = "zeros",
+            coord_encoding: str = "position",
+    ) -> None:
+
+        self.coord_encoding = coord_encoding
+        if coord_encoding == "position":
+            input_channel += 2
+            self._position_enc = None
+        else:
+            raise NotImplementedError
+
+        nn.Conv2d.__init__(
+            self,
+            in_channels=input_channel,
+            out_channels=output_channel,
+            kernel_size=kernerl_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+            bias=bias,
+            padding_mode=padding_mode,
+        )
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        b, c, h, w = inputs.shape
+        if self.coord_encoding == "position":
+            if self._position_enc is None:
+                pos_y, pos_x = torch.meshgrid(torch.arange(h), torch.arange(w))
+                pos_y = pos_y.float().to(inputs.device) / float(h)
+                pos_x = pos_x.float().to(inputs.device) / float(w)
+                self._position_enc = torch.stack((pos_y, pos_x)).unsqueeze(0)
+            pos_enc = self._position_enc.expand(b, -1, -1, -1)
+            inputs = torch.cat((inputs, pos_enc), dim=1)
+        return super(CoordConv, self).forward(inputs)
+
 class SpatialSoftmax(nn.Module):
     """
     Spatial Softmax Layer.
@@ -500,6 +550,8 @@ class SpatialSoftmax(nn.Module):
         self.register_buffer("pos_y", pos_y)
 
         self.kps = None
+
+        self.output_dim = [self._num_kp, 2]
 
     def forward(self, feature: torch.Tensor) -> torch.Tensor:
         """
@@ -560,7 +612,7 @@ class SpatialSoftmax(nn.Module):
             self.kps = (feature_keypoints[0].detach(), feature_keypoints[1].detach())
         else:
             self.kps = feature_keypoints.detach()
-        return feature_keypoints
+        return feature_keypoints # [B, K, 2] or ([B, K, 2], [B, K, 2, 2])
 
 class GEGLU(nn.Module):
     """
