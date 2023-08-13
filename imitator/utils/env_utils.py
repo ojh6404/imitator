@@ -20,10 +20,10 @@ from imitator.utils import file_utils as FileUtils
 from imitator.models.policy_nets import MLPActor, RNNActor, TransformerActor
 from imitator.utils.obs_utils import *
 
-try:
-    import robosuite
-except ImportError:
-    print("robosuite cannot be imported")
+# try:
+#     import robosuite
+# except ImportError:
+#     print("robosuite cannot be imported")
 
 
 
@@ -223,6 +223,7 @@ class RolloutBase(ABC):
 class RobosuiteRollout(RolloutBase):
     def __init__(self, cfg: Dict[str, Any]) -> None:
         super(RobosuiteRollout, self).__init__(cfg)
+        import robosuite
         self.env_meta = get_env_meta_from_dataset(cfg.dataset_path)
         self.env = create_env_from_env_meta(self.env_meta, render=True)
 
