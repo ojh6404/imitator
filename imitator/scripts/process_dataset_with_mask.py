@@ -11,6 +11,8 @@ import h5py
 
 import tkinter as tk
 
+from copy import deepcopy
+
 import torch
 import numpy as np
 import cv2
@@ -27,6 +29,21 @@ from tracking_ros.utils.dino_utils import get_grounded_bbox
 from groundingdino.util.inference import load_model
 from groundingdino.config import GroundingDINO_SwinT_OGC
 
+import clip
+
+global points
+points = []
+
+def get_points(event, x, y, flags, param):
+    global points
+
+    try:
+        if event == cv2.EVENT_LBUTTONDOWN:
+            points.append([x, y])
+    except Exception as e:
+        print(e)
+
+
 
 def compose_mask(masks):
     """
@@ -36,14 +53,51 @@ def compose_mask(masks):
     template_mask = np.zeros_like(masks[0]).astype(np.uint8)
     for i, mask in enumerate(masks):
         template_mask = np.clip(
-            template_mask + mask * (i + 1),
             0,
+            template_mask + mask * (i + 1),
             i + 1,
         )
         # TODO : checking overlapping mask
         assert len(np.unique(template_mask)) == (i + 2)
 
     return template_mask
+
+def masking_image(image, mask, background=255):
+    # image: [H, W, C]
+    # mask: [H, W] with 0, 1, 2, 3, ... N, 0 is background
+    # output: [H, W, C]
+    masked_image = image.copy()
+    masked_image[mask == 0] = background # background to black
+
+    return masked_image
+
+def mask_to_bbox(mask):
+    # mask: [H, W] with 0, 1, 2, 3, ... N, 0 is background
+    # output: [N, 4] of [x1, y1, x2, y2]
+
+    bboxes = []
+
+    for i in range(1, len(np.unique(mask))):
+        y, x = np.where(mask == i)
+        # when there is no mask matching
+        if len(y) == 0 or len(x) == 0:
+            print("no mask matching")
+            bboxes.append([0, 0, 0, 0]) # dummy bbox
+        bboxes.append([x.min(), y.min(), x.max(), y.max()])
+    return np.array(bboxes)
+
+def resize_roi_from_bbox(image, bbox, shape=(64,64)):
+
+    # bbox: [x1, y1, x2, y2]
+    # image: [H, W, C]
+    # shape: [H, W]
+    # output: [H, W, C]
+
+    # extract image region of bbox and resize it to shape
+    roi_image = image[bbox[1]:bbox[3], bbox[0]:bbox[2], :] # [H, W, C]
+    resized_roi_image = cv2.resize(roi_image, shape) # [C, H, W]
+    return resized_roi_image
+
 
 
 def main(args):
@@ -78,8 +132,12 @@ def main(args):
     # copy attributes
     for key in original_dataset.attrs.keys():
         processed_dataset.attrs[key] = original_dataset.attrs[key]
-    for key in original_dataset["data"].attrs.keys():
-        processed_dataset["data"].attrs[key] = original_dataset["data"].attrs[key]
+
+
+    # concatenate text into one string
+    num_objects = len(args.text_prompt)
+    text_prompt = ". ".join(args.text_prompt)
+    print("text prompt : ", text_prompt)
 
 
     # demos
@@ -97,47 +155,151 @@ def main(args):
         # copy obs
         obs_group = demo_group.create_group("obs")
         for obs_key in obs_keys:
-            obs_group.create_dataset(
-                obs_key,
-                data=original_dataset["data"][demo]["obs"][obs_key],
-                dtype=original_dataset["data"][demo]["obs"][obs_key].dtype,
-            )
 
             # create mask if obs's modality is ImageModality
             if config.obs[obs_key].modality == "ImageModality":
                 original_images = original_dataset["data"][demo]["obs"][obs_key] # [T, H, W, C]
 
+                predictor.set_image(original_images[0])
+
+                global points
 
                 if args.interactive:
-                    cv2.imshow("original", original_images[0])
-                    cv2.setMouseCallback("original", get_points)
-                    cv2.waitKey(0)
+                    # global points
+                    print("prompt manually")
+                    prompt_masks = [] # list of mask [H, W]
+                    prompt_image = original_images[0].copy()
+                    while True:
+                        cv2.imshow("original", prompt_image)
+                        cv2.setMouseCallback("original", get_points)
+                        prompt_image = point_drawer(prompt_image, points, labels=[1] * len(points))
+                        prompt_points = np.array(deepcopy(points))
+                        if len(prompt_points) > 0:
+                            masks, scores, logits = predictor.predict(
+                                point_coords= prompt_points,
+                                point_labels= [1] * len(prompt_points),
+                                box=None,
+                                mask_input=None,
+                                multimask_output=False,
+                                )
+                            mask, logit = masks[np.argmax(scores)], logits[np.argmax(scores)] # choose the best mask [H, W]
+                            prompt_image = mask_painter(prompt_image, mask, color_index=len(prompt_masks)+1)
+
+                            # refine mask
+                            masks, scores, logits = predictor.predict(
+                                point_coords= prompt_points,
+                                point_labels= [1] * len(prompt_points),
+                                box=None,
+                                mask_input= logit[None, :, :],
+                                multimask_output=False,
+                            )
+                            mask, logit = masks[np.argmax(scores)], logits[np.argmax(scores)]
+
+                        key = cv2.waitKey(1)
+                        if key == ord("p"):
+                            print("mask added")
+                            try:
+                                prompt_masks.append(mask.astype(np.uint8))
+                            except:
+                                print("no mask")
+                            points = []
+                        if key == ord("q"):
+                            print("prompt end")
+                            first_masks = np.array(prompt_masks)
+                            cv2.destroyAllWindows()
+                            break
+                        if key == ord("r"):
+                            print("reset points and masks")
+                            points = []
+                            prompt_masks = []
+                            prompt_image = original_images[0].copy()
+
                 else:
-                    bboxes = get_grounded_bbox(
+                    bboxes, phrases = get_grounded_bbox(
                         model=grounding_dino,
                         image=original_images[0],
-                        text_prompt=args.text_prompt,
+                        text_prompt=text_prompt,
                         box_threshold=args.box_threshold,
                         text_threshold=args.text_threshold,
                         )
 
-                    predictor.set_image(original_images[0])
-                    bboxes_tensor = torch.Tensor(bboxes).to("cpu")
-                    transformed_bboxes = predictor.transform.apply_boxes_torch(
-                        bboxes_tensor, original_images.shape[:2]
-                    )
+                    # ordering bbox with phrases be text order
+                    # print("phrases", phrases)
 
-                    with torch.no_grad():
-                        first_masks, scores, logits = predictor.predict_torch(
-                            point_coords=None,
-                            point_labels=None,
-                            boxes=transformed_bboxes,
-                            multimask_output=False,
-                            )
 
-                first_masks = first_masks.cpu().squeeze(1).numpy() # [N, H, W]
+                    ordered_bboxes = []
+                    for txt in args.text_prompt:
+                        for i, phrase in enumerate(phrases):
+                            if txt in phrase:
+                                ordered_bboxes.append(bboxes[i])
+                                break
+
+
+                    if len(phrases) == len(args.text_prompt):
+                        bboxes_tensor = torch.Tensor(ordered_bboxes).to("cpu") # [N, 4]
+                        transformed_bboxes = predictor.transform.apply_boxes_torch(
+                            bboxes_tensor, original_images.shape[:2]
+                        ) # [N, 4]
+
+                        with torch.no_grad():
+                            first_masks, scores, logits = predictor.predict_torch(
+                                point_coords=None,
+                                point_labels=None,
+                                boxes=transformed_bboxes,
+                                multimask_output=False,
+                                )
+                        first_masks = first_masks.cpu().squeeze(1).numpy() # [N, H, W]
+                    else:
+                        # global points
+                        print("prompt manually")
+                        prompt_masks = [] # list of mask [H, W]
+                        prompt_image = original_images[0].copy()
+                        while True:
+                            cv2.imshow("original", prompt_image)
+                            cv2.setMouseCallback("original", get_points)
+                            prompt_image = point_drawer(prompt_image, points, labels=[1] * len(points))
+                            prompt_points = np.array(deepcopy(points))
+                            if len(prompt_points) > 0:
+                                masks, scores, logits = predictor.predict(
+                                    point_coords= prompt_points,
+                                    point_labels= [1] * len(prompt_points),
+                                    box=None,
+                                    mask_input=None,
+                                    multimask_output=False,
+                                    )
+                                mask, logit = masks[np.argmax(scores)], logits[np.argmax(scores)] # choose the best mask [H, W]
+                                prompt_image = mask_painter(prompt_image, mask, color_index=len(prompt_masks)+1)
+
+                                # refine mask
+                                masks, scores, logits = predictor.predict(
+                                    point_coords= prompt_points,
+                                    point_labels= [1] * len(prompt_points),
+                                    box=None,
+                                    mask_input= logit[None, :, :],
+                                    multimask_output=False,
+                                )
+                                mask, logit = masks[np.argmax(scores)], logits[np.argmax(scores)]
+
+                            key = cv2.waitKey(1)
+                            if key == ord("p"):
+                                print("mask added")
+                                try:
+                                    prompt_masks.append(mask.astype(np.uint8))
+                                except:
+                                    print("no mask")
+                                points = []
+                            if key == ord("q"):
+                                print("prompt end")
+                                first_masks = np.array(prompt_masks)
+                                # template_mask = compose_mask(prompt_masks) # [H, W] with 0, 1, 2, 3, ... N, where 0 is background
+                                points = []
+                                cv2.destroyAllWindows()
+                                break
+
                 template_mask = compose_mask(first_masks) # [H, W] with 0, 1, 2, 3, ... N, 0 is background
-                masks = []
+                masks = [] # [T, H, W]
+                cropped_rois = [] # [T, N, H, W, C]
+
 
                 for i, original_image in enumerate(original_images):
                     if i == 0:
@@ -145,18 +307,48 @@ def main(args):
                     else:
                         template_mask, logit = xmem.track(frame=original_image)
                     masks.append(template_mask)
+
+
+                    masked_image = masking_image(original_image, template_mask)
+                    bboxes = mask_to_bbox(template_mask) # [N, 4] numpy array
+
+                    cropped_roi = [] # [N, H, W, C]
+                    for bbox in bboxes: # N
+                        resized_roi_image = resize_roi_from_bbox(masked_image, bbox, (224, 224))
+                        cropped_roi.append(resized_roi_image)
+
+                    cropped_roi = np.stack(cropped_roi, axis=0) # [N, H, W, C]
+                    cropped_rois.append(cropped_roi) # [T, N, H, W, C]
+
                     # for debug
-                    # cv2.imshow("mask", template_mask* 50)
-                    # cv2.waitKey(0)
+                    if args.debug:
+                        # visualize cropped roi image like [H, W*N, C]
+                        debug_image = np.concatenate(cropped_roi, axis=1)
+                        cv2.imshow("debug", cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR))
+                        cv2.waitKey(1)
                 xmem.clear_memory()
 
                 masks = np.stack(masks, axis=0) # [T, H, W]
+                cropped_rois = np.stack(cropped_rois, axis=0) # [T, N, H, W, C]
                 # save mask
                 obs_group.create_dataset(
                     obs_key + "_mask",
                     data=masks,
                     dtype=masks.dtype,
                 )
+                obs_group.create_dataset(
+                    obs_key + "_roi",
+                    data=cropped_rois,
+                    dtype=cropped_rois.dtype,
+                )
+                # print("cropped roi shape", cropped_rois.shape)
+                # print("mask shape", masks.shape)
+
+            obs_group.create_dataset(
+                obs_key,
+                data=original_dataset["data"][demo]["obs"][obs_key],
+                dtype=original_dataset["data"][demo]["obs"][obs_key].dtype,
+            )
 
     original_dataset.close()
     processed_dataset.close()
@@ -171,8 +363,9 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dataset", type=str)
+    parser.add_argument("--debug", action="store_true")
     parser.add_argument("-pn", "--project_name", type=str)
-    parser.add_argument("-tp", "--text_prompt", type=str)
+    parser.add_argument("-tp", "--text_prompt", nargs="+", type=str, default=[])
     parser.add_argument("-bt", "--box_threshold", type=float, default=0.35)
     parser.add_argument("-tt", "--text_threshold", type=float, default=0.25)
     parser.add_argument("-i", "--interactive", action="store_true")
