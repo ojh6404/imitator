@@ -368,24 +368,12 @@ def main(args):
 
                 masks = np.stack(masks, axis=0) # [T, H, W]
                 object_slot_images = np.stack(object_slot_images, axis=0) # [T, N, H, W, C]
-
-                # object slot mask is [T, H, W, N]
-                object_slot_mask = np.zeros((masks.shape[0], masks.shape[1], masks.shape[2], len(args.text_prompt)), dtype=np.uint8)
-                for t in range(masks.shape[0]):
-                    for n in range(len(args.text_prompt)):
-                        object_slot_mask[t, :, :, n] = (masks[t] == (n+1)).astype(np.uint8) * 255
-
                 cropped_rois = np.stack(cropped_rois, axis=0) # [T, N, H, W, C]
                 # save mask
                 obs_group.create_dataset(
                     obs_key + "_mask",
                     data=masks,
                     dtype=masks.dtype,
-                )
-                obs_group.create_dataset(
-                    obs_key + "_object_slot_mask",
-                    data=object_slot_mask,
-                    dtype=object_slot_mask.dtype,
                 )
                 obs_group.create_dataset(
                     obs_key + "_roi",
