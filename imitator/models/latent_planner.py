@@ -37,13 +37,14 @@ class LatentPlanner(nn.Module):
         )
 
         self.horizon = horizon
+        self.dim = 2
 
         self.decoder = nn.Sequential(
-            nn.Linear(64 + 64 + 2, 64),
+            nn.Linear(64 + 64 + 2, 400),
             nn.ReLU(),
-            nn.Linear(64, 64),
+            nn.Linear(400, 400),
             nn.ReLU(),
-            nn.Linear(64, self.horizon * 2),
+            nn.Linear(400, self.horizon * self.dim),
         )
 
 
@@ -61,7 +62,7 @@ class LatentPlanner(nn.Module):
         # latent: [B, 64 + 64 + 2]
         # output: [B, 30, 2]
         traj = self.decoder(latent)
-        traj = traj.view(-1, self.horizon, 2)
+        traj = traj.view(-1, self.horizon, self.dim)
         return traj
 
     def encode(self, goal_image, current_image, hand_xy):
