@@ -702,8 +702,8 @@ class Resnet(VisionModule):
                 bias=False,
             )
 
-        pool_kwargs.update({"input_shape": RESNET_OUTPUT_DIM[resnet_type]})
         if pool is not None:
+            pool_kwargs.update({"input_shape": RESNET_OUTPUT_DIM[resnet_type]})
             self.pool = eval(pool)(**pool_kwargs)
         else:
             self.pool = None
