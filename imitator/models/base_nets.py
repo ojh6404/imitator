@@ -842,7 +842,7 @@ class SelfAttentionBlock(nn.Module):
         x = x + self.nets["mlp"](self.nets["ln2"](x))
         return x
 
-class GPT_Backbone(nn.Module):
+class GPT(nn.Module):
     """the GPT model, with a context size of block_size"""
 
     def __init__(
@@ -855,7 +855,7 @@ class GPT_Backbone(nn.Module):
         num_heads:int=8,
         activation="gelu",
     )->None:
-        super(GPT_Backbone, self).__init__()
+        super(GPT, self).__init__()
 
         self.embed_dim = embed_dim
         self.num_layers = num_layers

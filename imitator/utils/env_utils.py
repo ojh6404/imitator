@@ -20,10 +20,10 @@ from imitator.utils import file_utils as FileUtils
 from imitator.models.policy_nets import MLPActor, RNNActor, TransformerActor
 from imitator.utils.obs_utils import *
 
-# try:
-#     import robosuite
-# except ImportError:
-#     print("robosuite cannot be imported")
+try:
+    import robosuite
+except ImportError:
+    print("robosuite cannot be imported")
 
 
 

@@ -16,7 +16,7 @@ import torch.distributions as D
 from torchvision import models as vision_models
 from torchvision import transforms
 
-from imitator.models.base_nets import MLP, RNN, PositionalEncoding, GPT_Backbone
+from imitator.models.base_nets import MLP, RNN, PositionalEncoding, GPT
 import imitator.utils.tensor_utils as TensorUtils
 from imitator.utils.obs_utils import ObservationEncoder, ImageModality, FloatVectorModality, get_normalize_params
 from imitator.utils import file_utils as FileUtils
@@ -259,7 +259,7 @@ class TransformerActor(Actor):
         self.nets["embed_ln"] = nn.LayerNorm(self.transformer_embed_dim)
         self.nets["embed_drop"] = nn.Dropout(self.transformer_embed_dropout)
 
-        self.nets["transformer"] = GPT_Backbone(
+        self.nets["transformer"] = GPT(
             embed_dim=self.transformer_embed_dim,
             context_length=self.context_length,
             attn_dropout=0.1,

@@ -47,8 +47,8 @@ if __name__ == "__main__":
     ]
     for image_obs in image_obs_keys:
         if config.obs[image_obs].obs_encoder.model_path is None:
-            # if config.obs[image_obs].obs_encoder.pretrained:
-            #     continue
+            if config.obs[image_obs].obs_encoder.trainable:
+                continue
             obs_default_model_path = os.path.join(
                 FileUtils.get_models_folder(args.project_name),
                 f"{image_obs}_model.pth",

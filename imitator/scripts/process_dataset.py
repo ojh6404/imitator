@@ -6,19 +6,9 @@ import argparse
 import numpy as np
 import yaml
 from omegaconf import OmegaConf
-from collections import OrderedDict
 
 from imitator.utils import file_utils as FileUtils
 from imitator.utils.datasets import SequenceDataset
-
-
-yaml.add_representer(
-    OrderedDict,
-    lambda dumper, data: dumper.represent_mapping(
-        "tag:yaml.org,2002:map", data.items()
-    ),
-)
-
 
 # get min and max data from dataset
 def main(args):
@@ -52,8 +42,8 @@ def main(args):
         hdf5_use_swmr=True,
     )
 
-    obs_max_buf = OrderedDict()
-    obs_min_buf = OrderedDict()
+    obs_max_buf = dict()
+    obs_min_buf = dict()
     for obs in obs_keys:
         obs_max_buf[obs] = np.ones_like(dataset[0]["obs"][obs]) * -np.inf
         obs_min_buf[obs] = np.ones_like(dataset[0]["obs"][obs]) * np.inf
@@ -65,9 +55,9 @@ def main(args):
     for obs in obs_keys:
         print(obs, "max and min:", obs_max_buf[obs], obs_min_buf[obs])
     # dump to yaml
-    yaml_data = OrderedDict()
-    yaml_data["actions"] = OrderedDict()
-    yaml_data["obs"] = OrderedDict()
+    yaml_data = dict()
+    yaml_data["actions"] = dict()
+    yaml_data["obs"] = dict()
 
     action_max = np.ones_like(dataset[0]["actions"])
     action_min = np.ones_like(dataset[0]["actions"]) * -1
@@ -76,7 +66,7 @@ def main(args):
     yaml_data["actions"]["min"] = action_min.tolist()
 
     for obs in obs_keys:
-        yaml_data["obs"][obs] = OrderedDict()
+        yaml_data["obs"][obs] = dict()
         yaml_data["obs"][obs]["max"] = obs_max_buf[obs].tolist()
         yaml_data["obs"][obs]["min"] = obs_min_buf[obs].tolist()
 
