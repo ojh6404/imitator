@@ -789,7 +789,7 @@ class R3M(VisionModule):
         # )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x expected to be [B, C, H, W] with C=3 and torch tensor of uint8
+        # x expected to be [B, C, H, W] with C=3 and torch tensor of uint8 [0, 255]
         x = TensorUtils.to_float(x)
         x = self.preprocess(x)
         x = self.nets["encoder"](x)
