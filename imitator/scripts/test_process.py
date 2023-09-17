@@ -4,12 +4,15 @@ from tqdm import tqdm
 import os
 import argparse
 import numpy as np
-from omegaconf import OmegaConf
+from omegaconf import DictConfig, OmegaConf
+import hydra
 
 from imitator.utils import file_utils as FileUtils
 from imitator.utils.datasets import SequenceDataset
 
 # get min and max data from dataset
+
+@hydra.main(config_path="../cfg", config_name="default.yaml")
 def main(args):
     config = FileUtils.get_cfg(args.project_name)
     hdf5_path = args.dataset

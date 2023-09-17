@@ -22,7 +22,7 @@ from imitator.utils.obs_utils import *
 
 try:
     import robosuite
-except ImportError:
+except:
     print("robosuite cannot be imported")
 
 

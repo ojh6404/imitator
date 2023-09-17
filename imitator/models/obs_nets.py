@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
 
-import sys
-import numpy as np
-import textwrap
-from copy import deepcopy
-from collections import OrderedDict
-
 from typing import (
     List,
     Dict,
@@ -19,6 +13,7 @@ from typing import (
     Sequence,
 )
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

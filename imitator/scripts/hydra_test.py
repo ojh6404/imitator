@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-import argparse
 import os
 import time
+
+from omegaconf import DictConfig, OmegaConf
+import hydra
+from hydra.utils import to_absolute_path
+import logging
 
 import numpy as np
 import cv2
@@ -15,7 +19,7 @@ from torch.utils.tensorboard import SummaryWriter
 import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
 from imitator.utils.datasets import ImageDataset
-from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder, SpatialAutoEncoder
+from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder
 from imitator.utils.obs_utils import concatenate_image, AddGaussianNoise, RGBShifter
 
 from torchvision import transforms as T
@@ -29,23 +33,31 @@ def verify(model, dataset, obs_key="image"):
     random_index = np.random.randint(0, len(dataset))
     test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray (H, W, C)
 
+    transform = T.Compose(
+        [
+            AddGaussianNoise(mean=0.0, std=0.1, p=1.0),
+            # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
+            RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=1.0),
+            T.RandomApply([T.RandomResizedCrop(size=test_image.shape[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=1.0),
+            # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
+        ]
+    )
+
 
     test_image_tensor =  TensorUtils.to_float(TensorUtils.to_device(TensorUtils.to_tensor(test_image), device))
     test_image_tensor = test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2).contiguous() / 255.0 # (1, C, H, W)
-    if args.model == "ae": # autoencoder
+    test_image_tensor = transform(test_image_tensor)
+    test_image = (test_image_tensor.detach().cpu().squeeze(0).permute(1, 2, 0).numpy() * 255.0).astype(np.uint8)
+
+    if args.model == "ae":
         x, z = model(test_image_tensor)
-    elif args.model == "vae": # variational autoencoder
+    elif args.model == "vae":
         x, z, mu, logvar = model(test_image_tensor)
-    elif args.model == "sae": # spatial autoencoder
-        x, z = model(test_image_tensor)
-    else:
-        raise NotImplementedError
 
     test_image_recon = (
         TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
     ).astype(np.uint8)
-    concat_image = test_image_recon
-    # concat_image = concatenate_image(test_image, test_image_recon)
+    concat_image = concatenate_image(test_image, test_image_recon)
     concat_image = cv2.cvtColor(concat_image, cv2.COLOR_RGB2BGR)
     print("Embedding shape: ", z.shape)
     cv2.imshow("verify", concat_image)
@@ -80,19 +92,12 @@ def main(args):
                 AddGaussianNoise(mean=0.0, std=0.1, p=0.5),
                 # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
                 RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=0.5),
-                T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5),
+               # T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5),
                 # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
             ]
         )
 
-    # resize image size to 60, 60 and grayscale
-    ground_truth_transform = T.Compose(
-        [
-            T.Resize(60),
-            T.Grayscale(),
-        ]
-    )
-
+    random_resize_crop = T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5)
 
 
     dataset = ImageDataset(
@@ -112,7 +117,7 @@ def main(args):
         dataset=dataset,
         sampler=None,  # no custom sampling logic (uniform sampling)
         batch_size=args.batch_size,  # batches of size 100
-        shuffle=False, # for spatial autoencoder, we want to keep the order of the images
+        shuffle=True,
         num_workers=0,
         drop_last=True,  # don't provide last batch in dataset pass if it's less than 100 in size
         # collate_fn= # TODO collate fn to numpy ndarray
@@ -175,22 +180,11 @@ def main(args):
         batch_image = TensorUtils.to_device(batch["obs"][obs_key], device) # (B, H, W, C)
         batch_image = batch_image.permute(0, 3, 1, 2)  # (B, C, H, W)
         batch_image = batch_image.contiguous().float() / 255.0
-        ground_truth = batch_image.clone()
-        ground_truth = ground_truth_transform(ground_truth)
+        batch_image = random_resize_crop(batch_image)
+        ground_truth = batch_image.detach().clone()
         if config.obs[obs_key].data_augmentation:
             batch_image = transform(batch_image).contiguous()
 
-        # debug for verify data augmentation, concatenate 2 images original and augmented
-        # original = (batch_image.detach().cpu().numpy() * 255).astype(np.uint8)
-        # original = original[0].transpose(1, 2, 0)
-        # cv2.imshow("original", cv2.cvtColor(original, cv2.COLOR_RGB2BGR))
-        # cv2.waitKey(0)
-        #
-
-        # ground_truth_image = (ground_truth.detach().cpu().numpy() * 255).astype(np.uint8)
-        # ground_truth_image = ground_truth_image[0].transpose(1, 2, 0)
-        # cv2.imshow("ground_truth", cv2.cvtColor(ground_truth_image, cv2.COLOR_RGB2BGR))
-        # cv2.waitKey(0)
 
         loss_sum = 0
         loss_dict = model.loss(x=batch_image, ground_truth=ground_truth)
@@ -260,20 +254,18 @@ def main(args):
 
     del dataset
 
+log = logging.getLogger(__name__)
+
+@hydra.main(config_path="../cfg", config_name="base_cfg")
+def train(cfg: DictConfig) -> None:
+    log.info("Info level message")
+    log.debug("Debug level message")
+
+    # read as DictConfig
+    config = FileUtils.get_cfg(cfg.project.task)
+    print(f"Working directory : {os.getcwd()}")
+    print(f"Output directory  : {hydra.core.hydra_config.HydraConfig.get().runtime.output_dir}")
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-pn", "--project_name", type=str)
-    parser.add_argument("-d", "--dataset", type=str)
-    parser.add_argument("-e", "--num_epochs", type=int, default=3000)
-    parser.add_argument("-b", "--batch_size", type=int, default=128)
-    parser.add_argument("--ratio", type=float, default=0.9)
-    parser.add_argument("-m", "--model", type=str, default="ae")
-    parser.add_argument("-obs", "--obs_key", type=str, default="image")
-    parser.add_argument("--device", type=str, default="cuda:0")
-    parser.add_argument("-v", "--verify", action="store_true", default=False)
-    parser.add_argument("-r", "--resume", action="store_true", default=False)
-    parser.add_argument("-ckpt", "--checkpoint", type=str)
-    args = parser.parse_args()
-
-    main(args)
+    train()

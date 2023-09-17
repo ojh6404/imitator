@@ -41,14 +41,8 @@ def verify(model, dataset):
 
 
 def main(args):
-    config = FileUtils.get_config_from_project_name(args.project_name)
-    hdf5_path = (
-        args.dataset
-        if args.dataset
-        else os.path.join(
-            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
-        )
-    )
+    config = FileUtils.get_cfg(args.project_name)
+    hdf5_path = args.dataset
     obs_keys = list(config.obs.keys())
     batch_size = args.batch_size
     num_epochs = args.num_epochs
@@ -157,12 +151,12 @@ def main(args):
 
     # make dir and tensorboard writer
     os.makedirs(
-        os.path.join(FileUtils.get_project_folder(args.project_name), "runs"),
+        os.path.join("runs", FileUtils.get_runs_folder(args.project_name)),
         exist_ok=True,
     )
     output_dir = os.path.join(
-        FileUtils.get_project_folder(args.project_name),
         "runs",
+        FileUtils.get_runs_folder(args.project_name),
         args.model + "_" + time.strftime("%Y-%m-%d_%H-%M-%S"),
     )
     summary_writer = SummaryWriter(output_dir)
@@ -172,8 +166,6 @@ def main(args):
     data_loader_iter = iter(data_loader)
 
     for epoch in range(1, num_epochs + 1):  # epoch numbers start at 1
-        # data_loader_iter = iter(data_loader)
-        # for _ in range(gradient_steps_per_epoch):
         try:
             batch = next(data_loader_iter)
         except StopIteration:

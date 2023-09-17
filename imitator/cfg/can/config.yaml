@@ -10,49 +10,59 @@ obs: # input into policy
   agentview_image:
     modality: "ImageModality"
     normalize: False
+    data_augmentation: True
     obs_encoder:
-      model: "VariationalAutoEncoder"
+      model: "Resnet"
       model_path: null
       model_kwargs:
         input_size: [224, 224]
         input_channel: 3
-        channels: [8, 16, 32, 64, 128, 256]
-        encoder_kernel_sizes: [3, 3, 3, 3, 3, 3]
-        decoder_kernel_sizes: [3, 4, 4, 4, 4, 4]
-        strides: [2, 2, 2, 2, 2, 2]
-        paddings: [1, 1, 1, 1, 1, 1]
-        latent_dim: 32
-      # pretrained: True
-      trainable: False
+        resnet_type: "resnet18"
+        input_coord_conv: False
+        pretrained: False,
+        latent_dim: 64
+        pool: "SpatialSoftmax"
+        pool_kwargs:
+          num_kp: 32
+          temperature: 1.0
+          learnable_temperature: False
+          output_variance: False
+          noise_std: 0.0
+      trainable: True
       input_dim: [224, 224, 3]
-      layer_dims: null # passing latent to mlp like [256, 128]
-      activation: "ReLU" # [ReLU, Tanh...]
-      output_dim: 32
-      has_decoder: True
-      freeze: True
+      activation: "ReLU"
+      layer_dims: null
+      output_dim: 64
+      has_decoder: False
+      freeze: False
   robot0_eye_in_hand_image:
     modality: "ImageModality"
     normalize: False
+    data_augmentation: True
     obs_encoder:
-      model: "VariationalAutoEncoder"
+      model: "Resnet"
       model_path: null
       model_kwargs:
         input_size: [224, 224]
         input_channel: 3
-        channels: [8, 16, 32, 64, 128, 256]
-        encoder_kernel_sizes: [3, 3, 3, 3, 3, 3]
-        decoder_kernel_sizes: [3, 4, 4, 4, 4, 4]
-        strides: [2, 2, 2, 2, 2, 2]
-        paddings: [1, 1, 1, 1, 1, 1]
-        latent_dim: 32
-      # pretrained: True
-      trainable: False
+        resnet_type: "resnet18"
+        input_coord_conv: False
+        pretrained: False,
+        latent_dim: 64
+        pool: "SpatialSoftmax"
+        pool_kwargs:
+          num_kp: 32
+          temperature: 1.0
+          learnable_temperature: False
+          output_variance: False
+          noise_std: 0.0
+      trainable: True
       input_dim: [224, 224, 3]
+      activation: "ReLU"
       layer_dims: null
-      activation: "ReLU" # [ReLU, Tanh...]
-      output_dim: 32
-      has_decoder: True
-      freeze: True
+      output_dim: 64
+      has_decoder: False
+      freeze: False
   robot0_eef_pos:
     modality: "FloatVectorModality"
     normalize: True
@@ -77,6 +87,14 @@ obs: # input into policy
       output_dim: 2
       layer_dims: null
       activation: "ReLU" # [ReLU, Tanh...]
+  # object:
+  #   modality: "FloatVectorModality"
+  #   normalize: True
+  #   obs_encoder:
+  #     input_dim: 10
+  #     output_dim: 10
+  #     layer_dims: null
+  #     activation: "ReLU" # [ReLU, Tanh...]
 actions:
   modality: "FloatVectorModality"
   dim: 7
@@ -84,15 +102,21 @@ actions:
 
 network:
   policy:
-    model: "RNNActor"
+    model: "TransformerActor"
     model_path: null
-    rnn:
-      type: "LSTM"
-      rnn_num_layers: 2
-      rnn_hidden_dim: 1000
-      seq_length: 20
-    mlp_layer_dims: [128, 64, 32]
-    mlp_activation: "ReLU"
+    transformer:
+      type: "GPT"
+      transformer_num_layers: 6
+      transformer_num_heads: 8
+      transformer_embed_dim: 512
+      context_length: 20
+      attn_dropout: 0.1
+      block_dropout: 0.1
+      activation: "gelu"
+    mlp_decoder:
+      layer_dims: [128, 128, 128]
+      activation: "ReLU"
+      squash_output: True
     train:
       lr: 1e-4
       lr_scheduler: True
@@ -106,7 +130,8 @@ network:
 dataset:
   dataset_keys: ["actions"]
   load_next_obs: True
-  frame_stack: 1
+  # frame_stack: 1
+  frame_stack: 20
   pad_frame_stack: True
   pad_seq_length: True
   get_pad_mask: False

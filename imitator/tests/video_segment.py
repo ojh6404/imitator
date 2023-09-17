@@ -266,6 +266,11 @@ def main(args):
             text = text_prompt[i]
             painted_image_with_label = bbox_drawer_with_text(painted_image_with_label, bbox, text, i*3+1)
 
+
+        decomposed_masks.append(decomposed_mask)
+
+
+
         masked_painted_images_with_bbox.append(painted_image_with_label)
         # for debug
         if args.debug:
@@ -333,6 +338,26 @@ def main(args):
     for masked_painted_image_with_bbox in masked_painted_images_with_bbox:
         video.write(masked_painted_image_with_bbox)
     video.release()
+
+    # write decomposed masks to video for each object N
+    # decomposed_masks is [T, N, H, W] of np.uint8
+    # want to get gray image of 0 and 255
+
+    decomposed_masks = np.array(decomposed_masks).astype(np.uint8) * 255 # [T, N, H, W]
+    # decomposed_masks = np.reshape(decomposed_masks, (decomposed_masks.shape[0], decomposed_masks.shape[1], decomposed_masks.shape[2], decomposed_masks.shape[3], 1)) # [T, N, H, W, 1]
+
+    for i in range(decomposed_masks.shape[1]): # N
+        object_masks = decomposed_masks[:, i] # [T, H, W]
+        height, width = object_masks[0].shape
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video = cv2.VideoWriter("decomposed_mask_{}.mp4".format(i), fourcc, 30.0, (width, height))
+        for object_mask in object_masks:
+            video.write(cv2.cvtColor(object_mask, cv2.COLOR_GRAY2BGR))
+        video.release()
+
+
+
+
 
 
 

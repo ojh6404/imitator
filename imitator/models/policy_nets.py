@@ -1,12 +1,7 @@
-import os
 from abc import ABC, abstractmethod
 import numpy as np
-from collections import OrderedDict
 
 from typing import Dict, Optional, Tuple, Union, List
-import yaml
-from easydict import EasyDict as edict
-from omegaconf import OmegaConf
 
 import torch
 import torch.nn as nn
@@ -19,14 +14,12 @@ from torchvision import transforms
 from imitator.models.base_nets import MLP, RNN, PositionalEncoding, GPT
 import imitator.utils.tensor_utils as TensorUtils
 from imitator.utils.obs_utils import ObservationEncoder, ImageModality, FloatVectorModality, get_normalize_params
-from imitator.utils import file_utils as FileUtils
 
 
 """
 Policy Networks
 flow : ObservationEncoder -> ActorCore[MLP, RNN, ...] -> MLPDecoder
 """
-
 
 class Actor(ABC, nn.Module):
     """

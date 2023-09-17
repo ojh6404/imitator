@@ -26,14 +26,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
 
-    dataset_path = (
-        args.dataset
-        if args.dataset
-        else os.path.join(
-            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
-        )
-    )
-    config = FileUtils.get_config_from_project_name(args.project_name)
+    dataset_path = args.dataset
+
+    config = FileUtils.get_cfg(args.project_name)
     if args.checkpoint is None:
         args.checkpoint = FileUtils.get_best_runs(args.project_name, args.model)
     config.network.policy.checkpoint = args.checkpoint
@@ -72,7 +67,7 @@ if __name__ == "__main__":
     policy_executor = RobosuiteRollout(config)
 
     for j in range(10):
-        for i in range(100):
+        for i in range(300):
             if i == 0:
                 action = np.random.randn(policy_executor.model.action_dim)
             else:
