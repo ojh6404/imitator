@@ -16,7 +16,7 @@ setup(
         package for package in find_packages() if package.startswith("imitator")
     ],
     install_requires=[
-        "numpy>=1.13.3",
+        "numpy",
         "opencv-python",
         "h5py",
         "psutil",
@@ -38,7 +38,7 @@ setup(
     author="Jihoon Oh",
     url="https://github.com/ojh6404/imitator",
     author_email="oh@jsk.imi.i.u-tokyo.ac.jp",
-    version="0.3.0",
+    version="0.0.1",
     # long_description=long_description,
     # long_description_content_type='text/markdown'
 )
