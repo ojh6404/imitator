@@ -101,6 +101,8 @@ def save_and_log(model, writer, logger_dict):
     # inference time
     writer.add_scalar("train/inference_time", inference_time, global_step=epoch)
 
+    return best_loss
+
 
 def main(args):
     config = FileUtils.get_config_from_project_name(args.project_name)
@@ -281,7 +283,7 @@ def main(args):
             "train/inference_time": end_time - start_time,
         }
 
-        save_and_log(model, summary_writer, logger_dict)
+        best_loss = save_and_log(model, summary_writer, logger_dict)
 
         scheduler.step()
     summary_writer.close()

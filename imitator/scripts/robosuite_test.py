@@ -25,7 +25,6 @@ if __name__ == "__main__":
     parser.add_argument("-ckpt", "--checkpoint", type=str)
     args = parser.parse_args()
 
-
     dataset_path = (
         args.dataset
         if args.dataset
@@ -72,7 +71,7 @@ if __name__ == "__main__":
     policy_executor = RobosuiteRollout(config)
 
     for j in range(10):
-        for i in range(100):
+        for i in range(200):
             if i == 0:
                 action = np.random.randn(policy_executor.model.action_dim)
             else:
