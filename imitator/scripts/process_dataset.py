@@ -4,7 +4,6 @@ from tqdm import tqdm
 import os
 import argparse
 import numpy as np
-import yaml
 from omegaconf import OmegaConf
 
 from imitator.utils import file_utils as FileUtils
@@ -83,8 +82,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--dataset", type=str)
-    parser.add_argument("-pn", "--project_name", type=str)
+    parser.add_argument("-d", "--dataset", type=str, help="path to hdf5 dataset")
+    parser.add_argument("-pn", "--project_name", type=str, required=True, help="project name")
     args = parser.parse_args()
 
     main(args)

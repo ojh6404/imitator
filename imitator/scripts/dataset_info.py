@@ -3,7 +3,6 @@
 import h5py
 import numpy as np
 import argparse
-import json
 
 from imitator.utils.file_utils import sort_names_by_number
 
