@@ -16,7 +16,7 @@ class ImageDataset(torch.utils.data.Dataset):
         self,
         hdf5_path: str,
         obs_keys: Union[List[str], Tuple[str]],
-        hdf5_cache_mode:bool=False,
+        hdf5_cache_mode: bool = False,
         hdf5_use_swmr=True,
     ) -> None:
         super(ImageDataset, self).__init__()
@@ -43,10 +43,7 @@ class ImageDataset(torch.utils.data.Dataset):
             )
 
             print("ImageDataset: caching get_item calls...")
-            self.getitem_cache = [
-                self.get_item(i)
-                for i in tqdm(range(len(self)))
-            ]
+            self.getitem_cache = [self.get_item(i) for i in tqdm(range(len(self)))]
             # don't need the previous cache anymore
             del self.hdf5_cache
             self.hdf5_cache = None
@@ -56,9 +53,7 @@ class ImageDataset(torch.utils.data.Dataset):
         self.close_and_delete_hdf5_handle()
 
     def load_demo_info(self):
-        self.demos = FileUtils.sort_names_by_number(
-            list(self.hdf5_file["data"].keys())
-        )
+        self.demos = FileUtils.sort_names_by_number(list(self.hdf5_file["data"].keys()))
         self.n_demos = len(self.demos)
 
         self._index_to_demo_id = dict()  # maps every index to a demo id
@@ -74,8 +69,6 @@ class ImageDataset(torch.utils.data.Dataset):
             for _ in range(demo_length):
                 self._index_to_demo_id[self.total_num_data] = ep
                 self.total_num_data += 1
-
-
 
     @property
     def hdf5_file(self):
@@ -175,7 +168,9 @@ class ImageDataset(torch.utils.data.Dataset):
         data = dict()
         data["obs"] = dict()
         for obs_key in self.obs_keys:
-            data["obs"][obs_key] = self.get_dataset_for_ep(demo_id, "obs/{}".format(obs_key))[index_in_demo]
+            data["obs"][obs_key] = self.get_dataset_for_ep(
+                demo_id, "obs/{}".format(obs_key)
+            )[index_in_demo]
         return data
 
     def get_dataset_sampler(self):
@@ -189,23 +184,22 @@ class ImageDataset(torch.utils.data.Dataset):
         return None
 
 
-
 class SequenceDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         hdf5_path: str,
         obs_keys: Union[Tuple[str], List[str]],
         dataset_keys: Union[Tuple[str], List[str]],
-        frame_stack:int=1,
-        seq_length:int=1,
-        pad_frame_stack:bool=True,
-        pad_seq_length:bool=True,
-        get_pad_mask:bool=False,
-        goal_mode:Optional[str]=None,
-        hdf5_cache_mode:Optional[str]=None,
-        hdf5_use_swmr:bool=True,
-        filter_by_attribute:Optional[str]=None,
-        load_next_obs:bool=True,
+        frame_stack: int = 1,
+        seq_length: int = 1,
+        pad_frame_stack: bool = True,
+        pad_seq_length: bool = True,
+        get_pad_mask: bool = False,
+        goal_mode: Optional[str] = None,
+        hdf5_cache_mode: Optional[str] = None,
+        hdf5_use_swmr: bool = True,
+        filter_by_attribute: Optional[str] = None,
+        load_next_obs: bool = True,
     ) -> None:
         """
         Dataset class for fetching sequences of experience.

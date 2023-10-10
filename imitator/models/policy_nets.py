@@ -18,7 +18,12 @@ from torchvision import transforms
 
 from imitator.models.base_nets import MLP, RNN, PositionalEncoding, GPT
 import imitator.utils.tensor_utils as TensorUtils
-from imitator.utils.obs_utils import ObservationEncoder, ImageModality, FloatVectorModality, get_normalize_params
+from imitator.utils.obs_utils import (
+    ObservationEncoder,
+    ImageModality,
+    FloatVectorModality,
+    get_normalize_params,
+)
 from imitator.utils import file_utils as FileUtils
 
 
@@ -32,19 +37,23 @@ class Actor(ABC, nn.Module):
     """
     Base class for actor networks.
     """
+
     def __init__(self, cfg: Dict) -> None:
         super(Actor, self).__init__()
         self.cfg = cfg
         self.policy_type = cfg.network.policy.model
         self.action_dim = cfg.actions.dim
         if cfg.actions.normalize:
-            action_mean, action_std = get_normalize_params(cfg.actions.min, cfg.actions.max)
+            action_mean, action_std = get_normalize_params(
+                cfg.actions.min, cfg.actions.max
+            )
         else:
             action_mean, action_std = 0.0, 1.0
-        self.action_modality = eval(cfg.actions.modality)(name="actions",shape=cfg.actions.dim, mean=action_mean, std=action_std)
+        self.action_modality = eval(cfg.actions.modality)(
+            name="actions", shape=cfg.actions.dim, mean=action_mean, std=action_std
+        )
 
         self.nets = nn.ModuleDict()
-
 
     @abstractmethod
     def _build_network(self):
@@ -56,11 +65,17 @@ class MLPActor(Actor):
         super(MLPActor, self).__init__(cfg)
         self.mlp_input_dim = sum(
             [cfg.obs[key].obs_encoder.output_dim for key in cfg.obs.keys()]
-        ) # sum of all obs_encoder output dims
+        )  # sum of all obs_encoder output dims
         self.mlp_kwargs = cfg.network.policy.get("kwargs", {})
         self.mlp_layer_dims = cfg.network.policy.mlp_decoder.layer_dims
-        self.mlp_activation = eval("nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU"))
-        self.decoder_output_activation = nn.Tanh if cfg.network.policy.mlp_decoder.get("squash_output", False) else None
+        self.mlp_activation = eval(
+            "nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU")
+        )
+        self.decoder_output_activation = (
+            nn.Tanh
+            if cfg.network.policy.mlp_decoder.get("squash_output", False)
+            else None
+        )
 
         self._build_network()
 
@@ -79,7 +94,11 @@ class MLPActor(Actor):
             output_activation=self.decoder_output_activation,
         )
 
-    def forward(self, obs_dict: Dict[str, torch.Tensor],unnormalize: bool = False,) -> torch.Tensor:
+    def forward(
+        self,
+        obs_dict: Dict[str, torch.Tensor],
+        unnormalize: bool = False,
+    ) -> torch.Tensor:
         """
         obs_dict is expected to be a dictionary with keys of self.obs_keys
         like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
@@ -92,7 +111,7 @@ class MLPActor(Actor):
         return outputs
 
     def forward_step(
-            self, obs_dict: Dict[str, torch.Tensor], unnormalize: bool = False
+        self, obs_dict: Dict[str, torch.Tensor], unnormalize: bool = False
     ) -> torch.Tensor:
         """
         obs_dict is expected to be a dictionary with keys of self.obs_keys
@@ -110,16 +129,21 @@ class RNNActor(Actor):
         self.rnn_hidden_dim = cfg.network.policy.rnn.rnn_hidden_dim
         self.rnn_input_dim = sum(
             [cfg.obs[key].obs_encoder.output_dim for key in cfg.obs.keys()]
-        ) # sum of all obs_encoder output dims
+        )  # sum of all obs_encoder output dims
         self.rnn_kwargs = cfg.network.policy.rnn.get("kwargs", {})
 
         # for rnn decoder
         self.mlp_layer_dims = cfg.network.policy.mlp_decoder.layer_dims
-        self.mlp_activation = eval("nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU"))
-        self.decoder_output_activation = nn.Tanh if cfg.network.policy.mlp_decoder.get("squash_output", False) else None
+        self.mlp_activation = eval(
+            "nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU")
+        )
+        self.decoder_output_activation = (
+            nn.Tanh
+            if cfg.network.policy.mlp_decoder.get("squash_output", False)
+            else None
+        )
 
         self._build_network()
-
 
     def _build_network(self) -> None:
         """
@@ -143,9 +167,9 @@ class RNNActor(Actor):
             per_step_net=self.nets["mlp_decoder"],
         )
 
-
-
-    def get_rnn_init_state(self, batch_size: int, device: torch.device) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    def get_rnn_init_state(
+        self, batch_size: int, device: torch.device
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         return self.nets["rnn"].get_rnn_init_state(batch_size, device)
 
     def forward(
@@ -173,7 +197,10 @@ class RNNActor(Actor):
             return outputs
 
     def forward_step(
-            self, obs_dict: Dict[str, torch.Tensor], rnn_state: torch.Tensor, unnormalize: bool = False
+        self,
+        obs_dict: Dict[str, torch.Tensor],
+        rnn_state: torch.Tensor,
+        unnormalize: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         obs_dict is expected to be a dictionary with keys of self.obs_keys
@@ -190,6 +217,7 @@ class TransformerActor(Actor):
     """
     Actor with Transformer encoder and MLP decoder
     """
+
     def __init__(
         self,
         cfg: Dict,
@@ -216,11 +244,15 @@ class TransformerActor(Actor):
         """
         super(TransformerActor, self).__init__(cfg)
         self.transformer_type = cfg.network.policy.transformer.type
-        self.transformer_num_layers = cfg.network.policy.transformer.transformer_num_layers
-        self.transformer_embed_dim = cfg.network.policy.transformer.transformer_embed_dim
+        self.transformer_num_layers = (
+            cfg.network.policy.transformer.transformer_num_layers
+        )
+        self.transformer_embed_dim = (
+            cfg.network.policy.transformer.transformer_embed_dim
+        )
         self.transformer_input_dim = sum(
             [cfg.obs[key].obs_encoder.output_dim for key in cfg.obs.keys()]
-        ) # sum of all obs_encoder output dims
+        )  # sum of all obs_encoder output dims
         self.transformer_kwargs = cfg.network.policy.transformer.get("kwargs", {})
         self.context_length = cfg.network.policy.transformer.context_length
 
@@ -229,14 +261,18 @@ class TransformerActor(Actor):
 
         # for transformer decoder
         self.mlp_layer_dims = cfg.network.policy.mlp_decoder.layer_dims
-        self.mlp_activation = eval("nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU"))
-        self.decoder_output_activation = nn.Tanh if cfg.network.policy.mlp_decoder.get("squash_output", False) else None
+        self.mlp_activation = eval(
+            "nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU")
+        )
+        self.decoder_output_activation = (
+            nn.Tanh
+            if cfg.network.policy.mlp_decoder.get("squash_output", False)
+            else None
+        )
 
         self.freeze = cfg.network.policy.get("freeze", True)
 
         self._build_network()
-
-
 
     def _build_network(self) -> None:
         """
@@ -246,9 +282,9 @@ class TransformerActor(Actor):
         self.params = nn.ParameterDict()
         self.params["embed_timestep"] = nn.Parameter(
             torch.zeros(1, self.max_timestep, self.transformer_embed_dim)
-        ) # TODO : pos enc or something more
+        )  # TODO : pos enc or something more
 
-        self.nets["obs_encoder"] = ObservationEncoder(self.cfg.obs) #
+        self.nets["obs_encoder"] = ObservationEncoder(self.cfg.obs)  #
         self.nets["embedding"] = MLP(
             input_dim=self.transformer_input_dim,
             layer_dims=[],
@@ -315,12 +351,13 @@ class TransformerActor(Actor):
         obs_dict: Dict[str, torch.Tensor],
         unnormalize: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-
-        obs_latents = self.nets["obs_encoder"](obs_dict) # [B, T, D] falttened
+        obs_latents = self.nets["obs_encoder"](obs_dict)  # [B, T, D] falttened
         assert obs_latents.ndim == 3  # [B, T, D]
 
         transformer_embeddings = self.input_embedding(obs_latents)
-        transformer_encoder_outputs = self.nets["transformer"].forward(transformer_embeddings)
+        transformer_encoder_outputs = self.nets["transformer"].forward(
+            transformer_embeddings
+        )
         outputs = self.nets["mlp_decoder"](transformer_encoder_outputs)
 
         if unnormalize:
@@ -329,11 +366,11 @@ class TransformerActor(Actor):
         return outputs
 
     def forward_step(
-            self, obs_dict: Dict[str, torch.Tensor], unnormalize: bool = False
+        self, obs_dict: Dict[str, torch.Tensor], unnormalize: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         obs_dict is expected to be a dictionary with keys of self.obs_keys
         like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
         """
-        outputs = self.forward(obs_dict, unnormalize=unnormalize) # [B, T, D]
-        return outputs[:, -1, :] # [B, D], last timestep cause it uses framestack
+        outputs = self.forward(obs_dict, unnormalize=unnormalize)  # [B, T, D]
+        return outputs[:, -1, :]  # [B, D], last timestep cause it uses framestack

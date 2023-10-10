@@ -40,6 +40,68 @@ def verify(model, dataset):
     plt.show()
 
 
+def train(model, batch, optimizer, criterion, action_normalizer):
+    model.train()
+    train_loss = criterion(model(batch["obs"]), action_normalizer(batch["actions"]))
+    optimizer.zero_grad()
+    train_loss.backward()
+    optimizer.step()
+    return train_loss.item()
+
+
+@torch.no_grad()
+def validate(model, data_loader, criterion, action_normalizer):
+    model.eval()
+    device = next(model.parameters()).device
+    valid_loss = 0.0
+    for batch in data_loader:
+        batch = TensorUtils.to_float(TensorUtils.to_device(batch, device))
+        valid_loss += criterion(
+            model(batch["obs"]), action_normalizer(batch["actions"])
+        ).item()
+    valid_loss /= len(data_loader)
+    return valid_loss
+
+
+def save_and_log(model, writer, logger_dict):
+    project_name = logger_dict["project_name"]
+    output_dir = logger_dict["output_dir"]
+    model_path = logger_dict["model_path"]
+    epoch = logger_dict["epoch"]
+    best_loss = logger_dict["best_loss"]
+    train_loss = logger_dict["train/loss"]
+    valid_loss = logger_dict["valid/loss"]
+    train_lr = logger_dict["train/lr"]
+    inference_time = logger_dict["train/inference_time"]
+    if epoch % 100 == 0:
+        print(
+            f"epoch: {epoch}, train loss: {train_loss:.5g}, valid loss: {valid_loss:.5g}"
+        )
+        torch.save(
+            model.state_dict(),
+            os.path.join(output_dir, args.model + "_model_" + str(epoch) + ".pth"),
+        )
+    if valid_loss < best_loss:
+        print(f"best model saved with valid loss {valid_loss:.5g}")
+        torch.save(
+            model.state_dict(),
+            os.path.join(output_dir, args.model + "_model_best.pth"),
+        )
+        best_loss = valid_loss
+
+        # create model folder if not exists
+        os.makedirs(FileUtils.get_models_folder(project_name), exist_ok=True)
+        torch.save(model.state_dict(), model_path)
+
+    # write to tensorboard
+    writer.add_scalar("train/loss", train_loss, global_step=epoch)
+    writer.add_scalar("valid/loss", valid_loss, global_step=epoch)
+    # lr rate
+    writer.add_scalar("train/lr", train_lr, global_step=epoch)
+    # inference time
+    writer.add_scalar("train/inference_time", inference_time, global_step=epoch)
+
+
 def main(args):
     config = FileUtils.get_config_from_project_name(args.project_name)
     hdf5_path = (
@@ -88,15 +150,34 @@ def main(args):
         seq_length = 1
         print("TransformerActor only supports seq_length=1")
 
-
-    dataset = SequenceDataset(
+    train_dataset = SequenceDataset(
         hdf5_path=hdf5_path,
         obs_keys=obs_keys,  # observations we want to appear in batches
         seq_length=seq_length,  # length-10 temporal sequences
+        filter_by_attribute="train",
         **config.dataset,
     )
-    data_loader = DataLoader(
-        dataset=dataset,
+    valid_dataset = SequenceDataset(
+        hdf5_path=hdf5_path,
+        obs_keys=obs_keys,  # observations we want to appear in batches
+        seq_length=seq_length,  # length-10 temporal sequences
+        filter_by_attribute="valid",
+        **config.dataset,
+    )
+
+    print("Train Dataset Trajectory Lengths: ", len(train_dataset))
+    print("Valid Dataset Trajectory Lengths: ", len(valid_dataset))
+
+    train_data_loader = DataLoader(
+        dataset=train_dataset,
+        sampler=None,  # no custom sampling logic (uniform sampling)
+        batch_size=batch_size,  # batches of size 100
+        shuffle=True,
+        num_workers=0,
+        drop_last=False,
+    )
+    valid_data_loader = DataLoader(
+        dataset=valid_dataset,
         sampler=None,  # no custom sampling logic (uniform sampling)
         batch_size=batch_size,  # batches of size 100
         shuffle=True,
@@ -142,8 +223,8 @@ def main(args):
             model.load_state_dict(
                 torch.load(FileUtils.get_best_runs(args.project_name, args.model))
             )
-        verify(model, dataset)
-        del dataset
+        verify(model, valid_dataset)
+        del train_dataset, valid_dataset
         return
 
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
@@ -169,61 +250,38 @@ def main(args):
     model.train()
 
     best_loss = np.inf
-    data_loader_iter = iter(data_loader)
+    train_data_loader_iter = iter(train_data_loader)
 
     for epoch in range(1, num_epochs + 1):  # epoch numbers start at 1
-        # data_loader_iter = iter(data_loader)
-        # for _ in range(gradient_steps_per_epoch):
         try:
-            batch = next(data_loader_iter)
+            batch = next(train_data_loader_iter)
         except StopIteration:
             # data loader ran out of batches - reset and yield first batch
-            data_loader_iter = iter(data_loader)
-            batch = next(data_loader_iter)
+            train_data_loader_iter = iter(train_data_loader)
+            batch = next(train_data_loader_iter)
         batch = TensorUtils.to_float(TensorUtils.to_device(batch, device))
 
         # calculate time and loss
         start_time = time.time()
-        prediction = model(batch["obs"])  # [B, T, D]
+        train_loss = train(model, batch, optimizer, nn.MSELoss(), action_normalizer)
         end_time = time.time()
-        groundtruth_action = action_normalizer(batch["actions"])
 
-        loss = nn.MSELoss()(prediction, groundtruth_action)
+        # validation
+        valid_loss = validate(model, valid_data_loader, nn.MSELoss(), action_normalizer)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        logger_dict = {
+            "project_name": args.project_name,
+            "output_dir": output_dir,
+            "model_path": config.network.policy.model_path,
+            "epoch": epoch,
+            "best_loss": best_loss,
+            "train/loss": train_loss,
+            "valid/loss": valid_loss,
+            "train/lr": optimizer.param_groups[0]["lr"],
+            "train/inference_time": end_time - start_time,
+        }
 
-        if epoch % 100 == 0:
-            print(f"epoch: {epoch}, loss: {loss.item():.5g}")
-            torch.save(
-                model.state_dict(),
-                os.path.join(output_dir, args.model + "_model_" + str(epoch) + ".pth"),
-            )
-
-        if loss.item() < best_loss:
-            print(f"best model saved with loss {loss.item():.5g}")
-            torch.save(
-                model.state_dict(),
-                os.path.join(output_dir, args.model + "_model_best.pth"),
-            )
-            best_loss = loss.item()
-
-            # create model folder if not exists
-            os.makedirs(
-                FileUtils.get_models_folder(args.project_name), exist_ok=True
-            )
-            torch.save(model.state_dict(), config.network.policy.model_path)
-
-        summary_writer.add_scalar("train/loss", loss.item(), global_step=epoch)
-        # lr rate
-        summary_writer.add_scalar(
-            "train/lr", optimizer.param_groups[0]["lr"], global_step=epoch
-        )
-        # inference time
-        summary_writer.add_scalar(
-            "train/inference_time", end_time - start_time, global_step=epoch
-        )
+        save_and_log(model, summary_writer, logger_dict)
 
         scheduler.step()
     summary_writer.close()
@@ -235,22 +293,28 @@ def main(args):
     model.load_state_dict(
         torch.load(FileUtils.get_best_runs(args.project_name, args.model))
     )
-    verify(model, dataset)
+    verify(model, valid_dataset)
 
-    del dataset
+    del train_dataset, valid_dataset
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-pn", "--project_name", type=str)
-    parser.add_argument("-d", "--dataset", type=str)
-    parser.add_argument("-e", "--num_epochs", type=int, default=3000)
-    parser.add_argument("-b", "--batch_size", type=int, default=16)
-    parser.add_argument("-m", "--model", type=str, default="mlp")
-    parser.add_argument("-r", "--resume", action="store_true", default=False)
-    parser.add_argument("-v", "--verify", action="store_true", default=False)
-    parser.add_argument("--device", type=str, default="cuda:0")
-    parser.add_argument("-ckpt", "--checkpoint", type=str)
+    parser.add_argument(
+        "-pn", "--project_name", type=str, required=True, help="project name"
+    )
+    parser.add_argument("-d", "--dataset", type=str, help="path to hdf5 dataset")
+    parser.add_argument("-e", "--num_epochs", type=int, default=3000, help="num epochs")
+    parser.add_argument("-b", "--batch_size", type=int, default=16, help="batch size")
+    parser.add_argument("-m", "--model", type=str, default="mlp", help="model type")
+    parser.add_argument(
+        "-r", "--resume", action="store_true", default=False, help="resume training"
+    )
+    parser.add_argument(
+        "-v", "--verify", action="store_true", default=False, help="verify mode"
+    )
+    parser.add_argument("--device", type=str, default="cuda:0", help="device")
+    parser.add_argument("-ckpt", "--checkpoint", type=str, help="checkpoint path")
     args = parser.parse_args()
 
     main(args)

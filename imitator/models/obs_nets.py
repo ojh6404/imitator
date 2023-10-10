@@ -38,6 +38,7 @@ from imitator.models.base_nets import (
     CNN,
 )
 
+
 def calculate_conv_output_size(
     input_size: List[int],
     kernel_sizes: List[int],
@@ -79,8 +80,6 @@ def calculate_deconv_output_size(
             + output_paddings[i]
         )
     return output_size
-
-
 
 
 class VisionModule(nn.Module):
@@ -679,9 +678,7 @@ class Resnet(VisionModule):
             weights = None
 
         self.nets = nn.ModuleDict()
-        resnet = getattr(vision_models, resnet_type)(
-            weights=weights
-        )
+        resnet = getattr(vision_models, resnet_type)(weights=weights)
 
         if input_coord_conv:
             resnet.conv1 = CoordConv(
@@ -708,7 +705,9 @@ class Resnet(VisionModule):
         else:
             self.pool = None
 
-        resnet_conv = list(resnet.children())[:-2] # [B] + RESNET_OUTPUT_DIM[resnet_type]
+        resnet_conv = list(resnet.children())[
+            :-2
+        ]  # [B] + RESNET_OUTPUT_DIM[resnet_type]
 
         encoder_list = []
         encoder_list.extend(resnet_conv)
@@ -717,12 +716,20 @@ class Resnet(VisionModule):
         encoder_list.append(nn.Flatten(start_dim=1, end_dim=-1))
         if latent_dim is not None:
             if self.pool is not None:
-                encoder_list.append(nn.Linear(np.prod(self.pool.output_dim), latent_dim))
+                encoder_list.append(
+                    nn.Linear(np.prod(self.pool.output_dim), latent_dim)
+                )
             else:
-                encoder_list.append(nn.Linear(np.prod(RESNET_OUTPUT_DIM[resnet_type]), latent_dim))
+                encoder_list.append(
+                    nn.Linear(np.prod(RESNET_OUTPUT_DIM[resnet_type]), latent_dim)
+                )
         self.nets["encoder"] = nn.Sequential(*encoder_list)
 
-        self.output_dim = latent_dim if latent_dim is not None else np.prod(RESNET_OUTPUT_DIM[resnet_type])
+        self.output_dim = (
+            latent_dim
+            if latent_dim is not None
+            else np.prod(RESNET_OUTPUT_DIM[resnet_type])
+        )
         if pretrained:
             self.preprocess = RESNET_WEIGHTS[resnet_type].transforms()
 
@@ -732,8 +739,6 @@ class Resnet(VisionModule):
             x = self.preprocess(x)
         x = self.nets["encoder"](x)
         return x
-
-
 
 
 class R3M(VisionModule):
@@ -907,8 +912,7 @@ class MVP(VisionModule):
         return inputs
 
 
-if __name__=="__main__":
-
+if __name__ == "__main__":
     test_input = torch.randn(5, 3, 224, 224)
     pool_kwargs = dict(
         num_kp=32,
@@ -916,9 +920,10 @@ if __name__=="__main__":
         learnable_temperature=False,
         output_variance=False,
         noise_std=0.0,
-
     )
-    resnet_encoder = Resnet(pool="SpatialSoftmax",pool_kwargs=pool_kwargs,latent_dim=64)
+    resnet_encoder = Resnet(
+        pool="SpatialSoftmax", pool_kwargs=pool_kwargs, latent_dim=64
+    )
 
     test_output = resnet_encoder(test_input)
     print(test_output.shape)

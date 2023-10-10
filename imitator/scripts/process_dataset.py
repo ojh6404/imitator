@@ -9,6 +9,7 @@ from omegaconf import OmegaConf
 from imitator.utils import file_utils as FileUtils
 from imitator.utils.datasets import SequenceDataset
 
+
 # get min and max data from dataset
 def main(args):
     config = FileUtils.get_config_from_project_name(args.project_name)
@@ -22,7 +23,11 @@ def main(args):
     obs_keys = list(config.obs.keys())
 
     # extract obs keys that is not image modality
-    obs_keys = [key for key in obs_keys if config.obs[key].modality != "ImageModality" and config.obs[key].normalize]
+    obs_keys = [
+        key
+        for key in obs_keys
+        if config.obs[key].modality != "ImageModality" and config.obs[key].normalize
+    ]
     print("obs_keys: ", obs_keys)
 
     dataset_keys = ["actions"]
@@ -74,7 +79,10 @@ def main(args):
     # )
 
     normalize_cfg = OmegaConf.create(yaml_data)
-    OmegaConf.save(normalize_cfg, os.path.join(FileUtils.get_config_folder(args.project_name), "normalize.yaml"))
+    OmegaConf.save(
+        normalize_cfg,
+        os.path.join(FileUtils.get_config_folder(args.project_name), "normalize.yaml"),
+    )
 
     # yaml.dump(yaml_data, yaml_file, default_flow_style=None)
     # yaml_file.close()
@@ -83,7 +91,9 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dataset", type=str, help="path to hdf5 dataset")
-    parser.add_argument("-pn", "--project_name", type=str, required=True, help="project name")
+    parser.add_argument(
+        "-pn", "--project_name", type=str, required=True, help="project name"
+    )
     args = parser.parse_args()
 
     main(args)

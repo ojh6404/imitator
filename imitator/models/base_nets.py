@@ -22,8 +22,6 @@ import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
-
-
 class Reshape(nn.Module):
     """
     Module that reshapes a tensor.
@@ -62,17 +60,16 @@ class Normalize(nn.Module):
     ) -> None:
         super(Normalize, self).__init__()
         # requires_grad = False
-        self._mean = TensorUtils.to_float(TensorUtils.to_tensor(mean)) # scalar or [3]
-        self._std = TensorUtils.to_float(TensorUtils.to_tensor(std)) # scalar or [3]
+        self._mean = TensorUtils.to_float(TensorUtils.to_tensor(mean))  # scalar or [3]
+        self._std = TensorUtils.to_float(TensorUtils.to_tensor(std))  # scalar or [3]
 
         self.register_buffer("mean", self._mean)
         self.register_buffer("std", self._std)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if len(x.shape) == 4: # [B, C, H, W]
+        if len(x.shape) == 4:  # [B, C, H, W]
             return (x - self.mean[None, :, None, None]) / self.std[None, :, None, None]
         return (x - self.mean) / self.std
-
 
 
 class Unnormalize(nn.Module):
@@ -450,21 +447,21 @@ class CNN(nn.Module):
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         return self.net(inputs)
 
+
 class CoordConv(nn.Conv2d, nn.Module):
     def __init__(
-            self,
-            input_channel: int = 3,
-            output_channel: int = 64,
-            kernerl_size: int = 3,
-            stride: int = 1,
-            padding: int = 0,
-            dilation: int = 1,
-            groups: int = 1,
-            bias: bool = True,
-            padding_mode: str = "zeros",
-            coord_encoding: str = "position",
+        self,
+        input_channel: int = 3,
+        output_channel: int = 64,
+        kernerl_size: int = 3,
+        stride: int = 1,
+        padding: int = 0,
+        dilation: int = 1,
+        groups: int = 1,
+        bias: bool = True,
+        padding_mode: str = "zeros",
+        coord_encoding: str = "position",
     ) -> None:
-
         self.coord_encoding = coord_encoding
         if coord_encoding == "position":
             input_channel += 2
@@ -497,6 +494,7 @@ class CoordConv(nn.Conv2d, nn.Module):
             inputs = torch.cat((inputs, pos_enc), dim=1)
         return super(CoordConv, self).forward(inputs)
 
+
 class SpatialSoftmax(nn.Module):
     """
     Spatial Softmax Layer.
@@ -507,12 +505,12 @@ class SpatialSoftmax(nn.Module):
 
     def __init__(
         self,
-        input_shape : List[int],
+        input_shape: List[int],
         num_kp: int = 32,
-        temperature:float=1.0,
-        learnable_temperature:bool=False,
-        output_variance:bool=False,
-        noise_std:float=0.0,
+        temperature: float = 1.0,
+        learnable_temperature: bool = False,
+        output_variance: bool = False,
+        noise_std: float = 0.0,
     ) -> None:
         super(SpatialSoftmax, self).__init__()
         assert len(input_shape) == 3
@@ -612,7 +610,8 @@ class SpatialSoftmax(nn.Module):
             self.kps = (feature_keypoints[0].detach(), feature_keypoints[1].detach())
         else:
             self.kps = feature_keypoints.detach()
-        return feature_keypoints # [B, K, 2] or ([B, K, 2], [B, K, 2, 2])
+        return feature_keypoints  # [B, K, 2] or ([B, K, 2], [B, K, 2, 2])
+
 
 class GEGLU(nn.Module):
     """
@@ -630,12 +629,13 @@ class GEGLU(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.geglu(x)
 
+
 class PositionalEncoding(nn.Module):
     """
     Taken from https://pytorch.org/tutorials/beginner/transformer_tutorial.html.
     """
 
-    def __init__(self, embed_dim: int)-> None:
+    def __init__(self, embed_dim: int) -> None:
         """
         Standard sinusoidal positional encoding scheme in transformers.
 
@@ -674,20 +674,23 @@ class PositionalEncoding(nn.Module):
         pe[:, :, 1::2] = torch.cos(position.unsqueeze(-1) * div_term)
         return pe.detach()
 
+
 class CausalSelfAttention(nn.Module):
     def __init__(
         self,
         embed_dim: int,
         num_heads: int,
         context_length: int,
-        attn_dropout:float=0.1,
-        output_dropout:float=0.1,
-    )->None:
+        attn_dropout: float = 0.1,
+        output_dropout: float = 0.1,
+    ) -> None:
         super(CausalSelfAttention, self).__init__()
 
         assert (
             embed_dim % num_heads == 0
-        ), "num_heads: {} does not divide embed_dim: {} exactly".format(num_heads, embed_dim)
+        ), "num_heads: {} does not divide embed_dim: {} exactly".format(
+            num_heads, embed_dim
+        )
 
         self.embed_dim = embed_dim
         self.num_heads = num_heads
@@ -767,6 +770,7 @@ class CausalSelfAttention(nn.Module):
         y = self.nets["output_dropout"](y)
         return y
 
+
 class SelfAttentionBlock(nn.Module):
     """
     A single Transformer Block, that can be chained together repeatedly.
@@ -779,9 +783,9 @@ class SelfAttentionBlock(nn.Module):
         embed_dim: int,
         num_heads: int,
         context_length: int,
-        attn_dropout:float=0.1,
-        output_dropout:float=0.1,
-        activation:nn.Module=nn.GELU(),
+        attn_dropout: float = 0.1,
+        output_dropout: float = 0.1,
+        activation: nn.Module = nn.GELU(),
     ) -> None:
         """
         Args:
@@ -827,7 +831,7 @@ class SelfAttentionBlock(nn.Module):
             nn.Linear(embed_dim, 4 * embed_dim * mult),
             activation,
             nn.Linear(4 * embed_dim, embed_dim),
-            nn.Dropout(output_dropout)
+            nn.Dropout(output_dropout),
         )
 
         # layer normalization for inputs to self-attention module and MLP
@@ -842,19 +846,20 @@ class SelfAttentionBlock(nn.Module):
         x = x + self.nets["mlp"](self.nets["ln2"](x))
         return x
 
+
 class GPT(nn.Module):
     """the GPT model, with a context size of block_size"""
 
     def __init__(
         self,
-        embed_dim:int,
-        context_length:int,
-        attn_dropout:float=0.1,
-        block_output_dropout:float=0.1,
-        num_layers:int=6,
-        num_heads:int=8,
+        embed_dim: int,
+        context_length: int,
+        attn_dropout: float = 0.1,
+        block_output_dropout: float = 0.1,
+        num_layers: int = 6,
+        num_heads: int = 8,
         activation="gelu",
-    )->None:
+    ) -> None:
         super(GPT, self).__init__()
 
         self.embed_dim = embed_dim
