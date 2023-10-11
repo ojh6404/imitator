@@ -54,10 +54,32 @@ class Actor(ABC, nn.Module):
         )
 
         self.nets = nn.ModuleDict()
+        self.training = True
 
     @abstractmethod
     def _build_network(self):
         pass
+
+    def get_action(
+        self,
+        batch: Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor]]],
+        unnormalize: bool = False
+    ) -> torch.Tensor:
+        """
+        obs_dict is expected to be a dictionary with keys of self.obs_keys
+        like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
+        """
+        outputs = self.forward(batch, unnormalize=unnormalize)
+        actions = outputs["predictions"]
+        return actions
+
+    def eval(self) -> "Actor":
+        self.training = False
+        return super(Actor, self).eval()
+
+    def train(self, mode: bool = True) -> "Actor":
+        self.training = True
+        return super(Actor, self).train(mode)
 
 
 class MLPActor(Actor):
@@ -96,28 +118,18 @@ class MLPActor(Actor):
 
     def forward(
         self,
-        obs_dict: Dict[str, torch.Tensor],
+        batch: Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor]]],
         unnormalize: bool = False,
     ) -> torch.Tensor:
         """
         obs_dict is expected to be a dictionary with keys of self.obs_keys
         like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
         """
-        obs_latents = self.nets["obs_encoder"](obs_dict)
+        obs_latents = self.nets["obs_encoder"](batch["obs"])
         outputs = self.nets["mlp_decoder"](obs_latents)
 
         if unnormalize:
             outputs = self.action_modality.unprocess_obs(outputs)
-        return outputs
-
-    def forward_step(
-        self, obs_dict: Dict[str, torch.Tensor], unnormalize: bool = False
-    ) -> torch.Tensor:
-        """
-        obs_dict is expected to be a dictionary with keys of self.obs_keys
-        like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
-        """
-        outputs = self.forward(obs_dict, unnormalize=unnormalize)
         return outputs
 
 
@@ -174,16 +186,12 @@ class RNNActor(Actor):
 
     def forward(
         self,
-        obs_dict: Dict[str, torch.Tensor],
+        batch: Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor]]],
         rnn_state: Optional[torch.Tensor] = None,
         return_rnn_state: bool = False,
         unnormalize: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        """
-        obs_dict is expected to be a dictionary with keys of self.obs_keys
-        like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
-        """
-        obs_latents = self.nets["obs_encoder"](obs_dict)
+        obs_latents = self.nets["obs_encoder"](batch["obs"])
         outputs, rnn_state = self.nets["rnn"](
             inputs=obs_latents, rnn_state=rnn_state, return_rnn_state=True
         )
@@ -196,9 +204,9 @@ class RNNActor(Actor):
         else:
             return outputs
 
-    def forward_step(
+    def get_action(
         self,
-        obs_dict: Dict[str, torch.Tensor],
+        batch: Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor]]],
         rnn_state: torch.Tensor,
         unnormalize: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -206,7 +214,7 @@ class RNNActor(Actor):
         obs_dict is expected to be a dictionary with keys of self.obs_keys
         like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
         """
-        obs_latents = self.nets["obs_encoder"](obs_dict)
+        obs_latents = self.nets["obs_encoder"](batch["obs"])
         outputs, rnn_state = self.nets["rnn"].forward_step(obs_latents, rnn_state)
         if unnormalize:
             outputs = self.action_modality.unprocess_obs(outputs)
@@ -270,6 +278,21 @@ class TransformerActor(Actor):
             else None
         )
 
+        self.supervise_all_steps = cfg.network.policy.train.get(
+            "supervise_all_steps", True
+        )
+
+        self.criterion = eval("nn." + cfg.network.policy.get("criterion", "MSELoss") + "()")
+
+        # TODO gmm configure
+        self.gmm = cfg.network.policy.gmm.get("enabled", False)
+        if self.gmm:
+            self.gmm_mode = cfg.network.policy.gmm.get("modes", 5)
+            self.min_std = cfg.network.policy.gmm.get("min_std", 0.0001)
+            self.low_noise_eval = cfg.network.policy.gmm.get("low_noise_eval", True)
+            self.use_tanh = cfg.network.policy.gmm.get("use_tanh", False)
+            self.gmm_activation = F.softplus
+
         self.freeze = cfg.network.policy.get("freeze", True)
 
         self._build_network()
@@ -305,13 +328,25 @@ class TransformerActor(Actor):
             activation="gelu",
         )
 
-        self.nets["mlp_decoder"] = MLP(
-            input_dim=self.transformer_embed_dim,
-            layer_dims=self.mlp_layer_dims,
-            output_dim=self.action_dim,
-            activation=self.mlp_activation,
-            output_activation=self.decoder_output_activation,
-        )
+        # TODO
+        if self.gmm:
+            self.nets["gmm_mean"] = nn.Linear(
+                self.transformer_embed_dim, self.action_dim * self.gmm_mode
+            )
+            self.nets["gmm_scale"] = nn.Linear(
+                self.transformer_embed_dim, self.action_dim * self.gmm_mode
+            )
+            self.nets["gmm_logits"] = nn.Linear(
+                self.transformer_embed_dim, self.gmm_mode
+            )
+        else:
+            self.nets["mlp_decoder"] = MLP(
+                input_dim=self.transformer_embed_dim,
+                layer_dims=self.mlp_layer_dims,
+                output_dim=self.action_dim,
+                activation=self.mlp_activation,
+                output_activation=self.decoder_output_activation,
+            )
 
     def embed_timesteps(self, embeddings):
         """
@@ -348,28 +383,109 @@ class TransformerActor(Actor):
 
     def forward(
         self,
-        obs_dict: Dict[str, torch.Tensor],
+        batch: Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor]]],
         unnormalize: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        obs_latents = self.nets["obs_encoder"](obs_dict)  # [B, T, D] falttened
+        return self.forward_train(batch, unnormalize=unnormalize)
+
+    def compute_loss(self, predictions, actions):
+        return self.criterion(predictions, actions)
+
+    def forward_train(
+        self,
+        batch: Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor]]],
+        unnormalize: bool = False,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        outputs = OrderedDict()
+        obs_latents = self.nets["obs_encoder"](batch["obs"])  # [B, T, D] falttened
         assert obs_latents.ndim == 3  # [B, T, D]
         transformer_embeddings = self.input_embedding(obs_latents)
         transformer_encoder_outputs = self.nets["transformer"].forward(
             transformer_embeddings
         )
-        outputs = self.nets["mlp_decoder"](transformer_encoder_outputs)
 
-        if unnormalize:
-            outputs = self.action_modality.unprocess_obs(outputs)
+        if self.training:
+            batch["actions"] = self.action_modality.process_obs(batch["actions"]).reshape(
+                -1, self.max_timestep, self.action_dim
+            )
 
+        if self.gmm:  # TODO use reshaper module
+            means = self.nets["gmm_mean"](transformer_encoder_outputs).reshape(
+                -1, self.max_timestep, self.gmm_mode, self.action_dim
+            )
+            scales = self.nets["gmm_scale"](transformer_encoder_outputs).reshape(
+                -1, self.max_timestep, self.gmm_mode, self.action_dim
+            )
+            logits = self.nets["gmm_logits"](transformer_encoder_outputs).reshape(
+                -1, self.max_timestep, self.gmm_mode
+            )
+
+            if not self.use_tanh: # TODO
+                means = torch.tanh(means)
+            if self.low_noise_eval and (not self.training):
+                scales = torch.ones_like(means) * 1e-4
+            else:
+                scales = self.gmm_activation(scales) + self.min_std
+
+            component_distribution = D.Normal(loc=means, scale=scales)
+            component_distribution = D.Independent(component_distribution, 1)
+            mixture_distribution = D.Categorical(logits=logits)
+
+            dists = D.MixtureSameFamily(
+                mixture_distribution=mixture_distribution,
+                component_distribution=component_distribution,
+            )
+
+            if not self.supervise_all_steps:
+                component_distribution = D.normal.Normal(
+                    loc=dists.component_distribution.base_dist.loc[:, -1],
+                    scale=dists.component_distribution.base_dist.scale[:, -1],
+                )
+                component_distribution = D.Independent(component_distribution, 1)
+                mixture_distribution = D.Categorical(
+                    logits=dists.mixture_distribution.logits[:, -1]
+                )
+                dists = D.MixtureSameFamily(
+                    mixture_distribution=mixture_distribution,
+                    component_distribution=component_distribution,
+                )
+                # TODO
+                batch["actions"] = batch["actions"][:, -1, :]
+
+
+            if batch["actions"] is not None:
+                log_probs = dists.log_prob(
+                    batch["actions"]
+                ) # [B, T] when supervised all steps or [B] when supervised last step
+                action_loss = -log_probs.mean()
+            else:
+                log_probs = None
+                action_loss = None
+
+            outputs["dists"] = dists
+            outputs["predictions"] = dists.sample()
+            outputs["log_probs"] = log_probs
+            outputs["loss"] = action_loss
+        else:
+            predictions = self.nets["mlp_decoder"](transformer_encoder_outputs)
+            outputs["predictions"] = predictions
+            # TODO loss
+            if batch["actions"] is not None:
+                outputs["loss"] = self.compute_loss(predictions, batch["actions"])
+            else:
+                outputs["loss"] = None
         return outputs
 
-    def forward_step(
-        self, obs_dict: Dict[str, torch.Tensor], unnormalize: bool = False
+    def get_action(
+        self,
+        batch: Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor]]],
+        unnormalize: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        obs_dict is expected to be a dictionary with keys of self.obs_keys
-        like {"image": image_obs, "robot_ee_pos": robot_ee_pos_obs}
-        """
-        outputs = self.forward(obs_dict, unnormalize=unnormalize)  # [B, T, D]
-        return outputs[:, -1, :]  # [B, D], last timestep cause it uses framestack
+        outputs = self.forward(batch, unnormalize=unnormalize)  # [B, T, D]
+        if self.supervise_all_steps: # get last timestep
+            actions = outputs["predictions"][:, -1, :]
+        else:
+            actions = outputs["predictions"]
+        if unnormalize:
+            actions = self.action_modality.unprocess_obs(actions)
+        return actions  # [B, D], last timestep cause it uses framestack

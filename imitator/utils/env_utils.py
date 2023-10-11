@@ -149,21 +149,23 @@ class RolloutBase(ABC):
 
 
     def rollout(self, obs: Dict[str, Any]) -> None:
+        batch = dict()
         obs = self.process_obs(obs)
         obs = TensorUtils.to_batch(obs)  # [1, D], if TransformerActor, [1, T, D]
-
+        batch["obs"] = obs
+        batch["actions"] = None # for dummy
         if self.actor_type == RNNActor:
             if self.running_cnt % self.rnn_seq_length == 0:
                 self.rnn_state = self.model.get_rnn_init_state(
                     batch_size=1, device=self.device
                 )
             with torch.no_grad():
-                pred_action, self.rnn_state = self.model.forward_step(
-                    obs, rnn_state=self.rnn_state, unnormalize=True
+                pred_action, self.rnn_state = self.model.get_action(
+                    batch, rnn_state=self.rnn_state, unnormalize=True
                 )
         else:
             with torch.no_grad():
-                pred_action = self.model.forward_step(obs, unnormalize=True)
+                pred_action = self.model.get_action(batch, unnormalize=True)
 
         if self.render_image:
             self.render(obs)
