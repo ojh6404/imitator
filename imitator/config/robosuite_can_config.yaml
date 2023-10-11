@@ -48,6 +48,13 @@ network:
   policy:
     model: "TransformerActor"
     model_path: null
+    gmm:
+      enabled: True
+      modes: 5
+      min_std: 0.0001
+      low_noise_eval: True
+      use_tanh: False
+      std_activation: "F.softplus" # or torch.exp
     transformer:
       type: "GPT"
       transformer_num_layers: 6
@@ -58,15 +65,20 @@ network:
       block_dropout: 0.1
       activation: "gelu"
     mlp_decoder:
-      layer_dims: [128, 128, 128]
+      layer_dims: []
       activation: "ReLU"
       squash_output: True
     train:
+      num_epochs: 5000
+      batch_size: 4096
+      criterion: "MSELoss"
       lr: 1e-4
       lr_scheduler: True
-      optimizer: "Adam"
-      batch_size: 128
-      seq_length: 10 # equal to rnn seq_length if RNNActor
+      supervise_all_steps: True
+      # supervise_all_steps: False
+      optimizer: "AdamW"
+      weight_decay: 0.01
+      max_grad_norm: null # null or 1, 3, 5,...
       weight:
         l1: 0.0
         l2: 1.0
