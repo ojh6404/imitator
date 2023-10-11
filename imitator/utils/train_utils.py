@@ -147,8 +147,6 @@ def build_dataloader(obs_keys, dataset_config, batch_size):
         **dataset_config,
     )
 
-    print("Loaded Train Dataset Trajectory Lengths: ", len(train_dataset))
-    print("Loaded Valid Dataset Trajectory Lengths: ", len(valid_dataset))
 
     train_dataloader = DataLoader(
         dataset=train_dataset,
