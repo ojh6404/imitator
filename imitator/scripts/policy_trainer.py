@@ -16,23 +16,41 @@ from imitator.utils.datasets import SequenceDataset
 from imitator.models.policy_nets import MLPActor, RNNActor, TransformerActor
 import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
-from imitator.utils.obs_utils import get_normalize_params
 import imitator.utils.train_utils as TrainUtils
 
 ACTOR_TYPES = {"mlp": MLPActor, "rnn": RNNActor, "transformer": TransformerActor}
 
 def main(args):
     config = FileUtils.get_config_from_project_name(args.project_name)
+    print("\n================ Config ================")
+    FileUtils.print_config(config)
+    print("========================================")
+
     train_config = config.network.policy.train
-    dataset_config = config.dataset
 
     train_config.batch_size = args.batch_size if args.batch_size else train_config.batch_size
     train_config.num_epochs = args.num_epochs if args.num_epochs else train_config.num_epochs
-    dataset_config.hdf5_path = args.dataset if args.dataset else os.path.join(
+    config.dataset.hdf5_path = args.dataset if args.dataset else os.path.join(
         FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
     )
     train_config.seq_length = config.network.policy.rnn.seq_length if args.model == "rnn" else 1
     obs_keys = list(config.obs.keys())
+    train_dataloader, valid_dataloader = TrainUtils.build_dataloader(
+        obs_keys, config.dataset, train_config.batch_size
+    )
+
+    print("\n================ Dataset ================")
+    print("Loaded Train Dataset Trajectory Lengths: ", len(train_dataloader.dataset))
+    print("Loaded Valid Dataset Trajectory Lengths: ", len(valid_dataloader.dataset))
+    print("========================================")
+
+    device = torch.device(args.device)
+    actor_type = ACTOR_TYPES[args.model]
+    model = actor_type(config).to(device)
+
+    print("\n================ Model ================")
+    print(model)
+    print("=======================================")
 
     image_obs_keys = [
         obs_key
@@ -62,34 +80,6 @@ def main(args):
         )
         config.network.policy.model_path = default_model_path
 
-    train_dataloader, valid_dataloader = TrainUtils.build_dataloader(
-        obs_keys, dataset_config, train_config.batch_size
-    )
-
-    device = torch.device(args.device)
-
-    # TODO remove this
-    if config.actions.normalize:
-        normalizer_cfg = FileUtils.get_normalize_cfg(args.project_name)
-        action_mean, action_std = get_normalize_params(
-            normalizer_cfg.actions.min, normalizer_cfg.actions.max
-        )
-        config.actions.update(
-            {"max": normalizer_cfg.actions.max, "min": normalizer_cfg.actions.min}
-        )
-    else:
-        action_mean, action_std = 0.0, 1.0
-
-    for obs in obs_keys:
-        normalizer_cfg = FileUtils.get_normalize_cfg(args.project_name)
-        if config.obs[obs].normalize:
-            config.obs[obs].update(
-                {"max": normalizer_cfg.obs[obs].max, "min": normalizer_cfg.obs[obs].min}
-            )
-
-    actor_type = ACTOR_TYPES[args.model]
-    print("\n\n\n actor_type: ", actor_type)
-    model = actor_type(config).to(device)
 
     # load checkpoint if provided
     if args.resume:
@@ -120,7 +110,6 @@ def main(args):
         gamma=0.1,
     )
 
-    print(model)
 
     # make dir and tensorboard writer
     os.makedirs(
@@ -136,6 +125,8 @@ def main(args):
 
     best_loss = np.inf
     train_dataloader_iter = iter(train_dataloader)
+
+    print("\n================ Training ================")
     for epoch in range(1, train_config.num_epochs + 1):  # epoch numbers start at 1
         try:
             batch = next(train_dataloader_iter)

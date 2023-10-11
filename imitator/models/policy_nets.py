@@ -42,6 +42,7 @@ class Actor(ABC, nn.Module):
         self.cfg = cfg
         self.policy_type = cfg.network.policy.model
         self.action_dim = cfg.actions.dim
+
         if cfg.actions.normalize:
             action_mean, action_std = get_normalize_params(
                 cfg.actions.min, cfg.actions.max
@@ -224,7 +225,6 @@ class TransformerActor(Actor):
     """
     Actor with Transformer encoder and MLP decoder
     """
-
     def __init__(
         self,
         cfg: Dict,
