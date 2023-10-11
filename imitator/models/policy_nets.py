@@ -353,7 +353,6 @@ class TransformerActor(Actor):
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         obs_latents = self.nets["obs_encoder"](obs_dict)  # [B, T, D] falttened
         assert obs_latents.ndim == 3  # [B, T, D]
-
         transformer_embeddings = self.input_embedding(obs_latents)
         transformer_encoder_outputs = self.nets["transformer"].forward(
             transformer_embeddings

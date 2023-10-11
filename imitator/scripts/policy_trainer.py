@@ -42,7 +42,9 @@ def verify(model, dataset):
 
 def train(model, batch, optimizer, criterion, action_normalizer):
     model.train()
-    train_loss = criterion(model(batch["obs"]), action_normalizer(batch["actions"]))
+    prediction = model(batch["obs"])
+    ground_truth = action_normalizer(batch["actions"])
+    train_loss = criterion(prediction, ground_truth)
     optimizer.zero_grad()
     train_loss.backward()
     optimizer.step()
@@ -56,9 +58,9 @@ def validate(model, data_loader, criterion, action_normalizer):
     valid_loss = 0.0
     for batch in data_loader:
         batch = TensorUtils.to_float(TensorUtils.to_device(batch, device))
-        valid_loss += criterion(
-            model(batch["obs"]), action_normalizer(batch["actions"])
-        ).item()
+        prediction = model(batch["obs"])
+        ground_truth = action_normalizer(batch["actions"])
+        valid_loss += criterion(prediction, ground_truth).item()
     valid_loss /= len(data_loader)
     return valid_loss
 
