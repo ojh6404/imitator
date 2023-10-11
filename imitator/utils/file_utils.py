@@ -6,7 +6,6 @@ import os
 import h5py
 import re
 import yaml
-from easydict import EasyDict as edict
 from omegaconf import OmegaConf
 
 import datetime
@@ -67,8 +66,6 @@ def get_config_file(project_name):
 
 def get_config_from_project_name(project_name):
     config_file = get_config_file(project_name)
-    # with open(config_file, "r") as f:
-    #     config = edict(yaml.safe_load(f))
     config = OmegaConf.load(config_file)
     return config
 
@@ -76,8 +73,6 @@ def get_config_from_project_name(project_name):
 def get_normalize_cfg(project_name):
     config_dir = get_config_folder(project_name)
     normalize_file = os.path.join(config_dir, "normalize.yaml")
-    # with open(normalize_file, "r") as f:
-    #     normalize_cfg = edict(yaml.safe_load(f))
     normalize_cfg = OmegaConf.load(normalize_file)
     return normalize_cfg
 

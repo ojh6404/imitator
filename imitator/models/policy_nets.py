@@ -5,7 +5,6 @@ from collections import OrderedDict
 
 from typing import Dict, Optional, Tuple, Union, List
 import yaml
-from easydict import EasyDict as edict
 from omegaconf import OmegaConf
 
 import torch

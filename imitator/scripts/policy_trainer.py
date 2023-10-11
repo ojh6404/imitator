@@ -69,16 +69,16 @@ def main(args):
     device = torch.device(args.device)
 
     # TODO remove this
-    # if config.actions.normalize:
-    #     normalizer_cfg = FileUtils.get_normalize_cfg(args.project_name)
-    #     action_mean, action_std = get_normalize_params(
-    #         normalizer_cfg.actions.min, normalizer_cfg.actions.max
-    #     )
-    #     config.actions.update(
-    #         {"max": normalizer_cfg.actions.max, "min": normalizer_cfg.actions.min}
-    #     )
-    # else:
-    #     action_mean, action_std = 0.0, 1.0
+    if config.actions.normalize:
+        normalizer_cfg = FileUtils.get_normalize_cfg(args.project_name)
+        action_mean, action_std = get_normalize_params(
+            normalizer_cfg.actions.min, normalizer_cfg.actions.max
+        )
+        config.actions.update(
+            {"max": normalizer_cfg.actions.max, "min": normalizer_cfg.actions.min}
+        )
+    else:
+        action_mean, action_std = 0.0, 1.0
 
     for obs in obs_keys:
         normalizer_cfg = FileUtils.get_normalize_cfg(args.project_name)
@@ -88,6 +88,7 @@ def main(args):
             )
 
     actor_type = ACTOR_TYPES[args.model]
+    print("\n\n\n actor_type: ", actor_type)
     model = actor_type(config).to(device)
 
     # load checkpoint if provided
