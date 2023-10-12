@@ -71,7 +71,7 @@ if __name__ == "__main__":
     policy_executor = RobosuiteRollout(config)
 
     for j in range(10):
-        for i in range(200):
+        for i in range(300):
             if i == 0:
                 action = np.random.randn(policy_executor.model.action_dim)
             else:

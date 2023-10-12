@@ -3,13 +3,9 @@ A collection of utility functions for working with files, such as reading metada
 demonstration datasets, loading model checkpoints, or downloading dataset files.
 """
 import os
-import h5py
 import re
-import yaml
-from easydict import EasyDict as edict
 from omegaconf import OmegaConf
-
-import datetime
+import json
 
 PROJECT_ROOT = os.path.expanduser("~/.imitator")
 
@@ -67,20 +63,29 @@ def get_config_file(project_name):
 
 def get_config_from_project_name(project_name):
     config_file = get_config_file(project_name)
-    # with open(config_file, "r") as f:
-    #     config = edict(yaml.safe_load(f))
     config = OmegaConf.load(config_file)
+    config = update_normlize_cfg(project_name, config)
     return config
 
 
 def get_normalize_cfg(project_name):
     config_dir = get_config_folder(project_name)
     normalize_file = os.path.join(config_dir, "normalize.yaml")
-    # with open(normalize_file, "r") as f:
-    #     normalize_cfg = edict(yaml.safe_load(f))
     normalize_cfg = OmegaConf.load(normalize_file)
     return normalize_cfg
 
+def update_normlize_cfg(project_name, config):
+    normalize_cfg = get_normalize_cfg(project_name)
+    if config.actions.normalize:
+        config.actions.min = normalize_cfg.actions.min
+        config.actions.max = normalize_cfg.actions.max
+    for obs in normalize_cfg["obs"].keys():
+        if config.obs[obs].normalize:
+            config.obs[obs].min = normalize_cfg.obs[obs].min
+            config.obs[obs].max = normalize_cfg.obs[obs].max
+    return config
+
+    
 
 def get_latest_runs(project_name, model_type):
     model_dir = get_log_folder(project_name)
@@ -104,3 +109,7 @@ def get_best_runs(project_name, model_type):
         model_file = os.path.join(model_type_dir, model_file)
         print("Best model not found, use the latest model: ", model_file)
         return model_file
+
+def print_config(config):
+    dict_config = OmegaConf.to_container(config, resolve=True)
+    print(json.dumps(dict_config, indent=4))
