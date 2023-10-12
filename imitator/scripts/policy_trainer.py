@@ -23,8 +23,8 @@ def main(args):
 
     TrainUtils.set_seed(args.seed)
     device = torch.device(args.device)
-    actor_type = eval(config.network.policy.model)
-    model = actor_type(config).to(device)
+    model_type = config.network.policy.model
+    model = eval(model_type)(config).to(device)
 
     train_config = config.network.policy.train
     train_config.batch_size = (
@@ -87,7 +87,7 @@ def main(args):
     if config.network.policy.model_path is None:
         default_model_path = os.path.join(
             FileUtils.get_models_folder(args.project_name),
-            f"{args.model}_actor_model.pth",
+            f"{model_type}_actor_model.pth",
         )
         config.network.policy.model_path = default_model_path
 
@@ -97,14 +97,14 @@ def main(args):
             model.load_state_dict(torch.load(args.checkpoint))
         else:
             model.load_state_dict(
-                torch.load(FileUtils.get_best_runs(args.project_name, args.model))
+                torch.load(FileUtils.get_best_runs(args.project_name, model_type))
             )
     elif args.verify:
         if args.checkpoint:
             model.load_state_dict(torch.load(args.checkpoint))
         else:
             model.load_state_dict(
-                torch.load(FileUtils.get_best_runs(args.project_name, args.model))
+                torch.load(FileUtils.get_best_runs(args.project_name, model_type))
             )
         TrainUtils.verify(model, valid_dataloader.dataset, seed=args.seed)
         return
@@ -128,7 +128,7 @@ def main(args):
     output_dir = os.path.join(
         FileUtils.get_project_folder(args.project_name),
         "runs",
-        args.model + "_" + time.strftime("%Y-%m-%d_%H-%M-%S"),
+        model_type + "_" + time.strftime("%Y-%m-%d_%H-%M-%S"),
     )
     summary_writer = SummaryWriter(output_dir)
 
@@ -163,7 +163,7 @@ def main(args):
 
         logger_dict = {
             "project_name": args.project_name,
-            "model_type": args.model,
+            "model_type": model_type,
             "output_dir": output_dir,
             "model_path": config.network.policy.model_path,
             "epoch": epoch,
@@ -186,7 +186,7 @@ def main(args):
     # test
     model = actor_type(config).to(device)
     model.load_state_dict(
-        torch.load(FileUtils.get_best_runs(args.project_name, args.model))
+        torch.load(FileUtils.get_best_runs(args.project_name, model_type))
     )
     TrainUtils.verify(model, valid_dataloader.dataset, seed=args.seed)
 
