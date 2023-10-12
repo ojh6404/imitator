@@ -14,7 +14,6 @@ import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
 import imitator.utils.train_utils as TrainUtils
 
-ACTOR_TYPES = {"mlp": MLPActor, "rnn": RNNActor, "transformer": TransformerActor}
 
 def main(args):
     config = FileUtils.get_config_from_project_name(args.project_name)
@@ -22,15 +21,34 @@ def main(args):
     FileUtils.print_config(config)
     print("========================================")
 
+    TrainUtils.set_seed(args.seed)
+    device = torch.device(args.device)
+    actor_type = eval(config.network.policy.model)
+    model = actor_type(config).to(device)
+
     train_config = config.network.policy.train
-    train_config.batch_size = args.batch_size if args.batch_size else train_config.batch_size
-    train_config.num_epochs = args.num_epochs if args.num_epochs else train_config.num_epochs
-    config.dataset.hdf5_path = args.dataset if args.dataset else os.path.join(
-        FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
+    train_config.batch_size = (
+        args.batch_size if args.batch_size else train_config.batch_size
     )
-    train_config.seq_length = config.network.policy.rnn.rnn_horizon if args.model == "rnn" else 1
+    train_config.num_epochs = (
+        args.num_epochs if args.num_epochs else train_config.num_epochs
+    )
+    config.dataset.hdf5_path = (
+        args.dataset
+        if args.dataset
+        else os.path.join(
+            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
+        )
+    )
+    train_config.seq_length = (
+        config.network.policy.rnn.rnn_horizon if isinstance(model, RNNActor) else 1
+    )
     config.dataset.seq_length = train_config.seq_length
-    config.dataset.frame_stack = config.network.policy.transformer.context_length if args.model == "transformer" else 1
+    config.dataset.frame_stack = (
+        config.network.policy.transformer.context_length
+        if isinstance(model, TransformerActor)
+        else 1
+    )
     obs_keys = list(config.obs.keys())
     train_dataloader, valid_dataloader = TrainUtils.build_dataloader(
         obs_keys, config.dataset, train_config.batch_size
@@ -40,11 +58,6 @@ def main(args):
     print("Loaded Train Dataset Trajectory Lengths: ", len(train_dataloader.dataset))
     print("Loaded Valid Dataset Trajectory Lengths: ", len(valid_dataloader.dataset))
     print("========================================")
-
-    TrainUtils.set_seed(args.seed)
-    device = torch.device(args.device)
-    actor_type = ACTOR_TYPES[args.model]
-    model = actor_type(config).to(device)
 
     print("\n================ Model ================")
     print(model)
@@ -78,7 +91,6 @@ def main(args):
         )
         config.network.policy.model_path = default_model_path
 
-
     # load checkpoint if provided
     if args.resume:
         if args.checkpoint:
@@ -107,7 +119,6 @@ def main(args):
         milestones=[train_config.num_epochs // 2, train_config.num_epochs // 4 * 3],
         gamma=0.1,
     )
-
 
     # make dir and tensorboard writer
     os.makedirs(
@@ -188,7 +199,6 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dataset", type=str, help="path to hdf5 dataset")
     parser.add_argument("-e", "--num_epochs", type=int, default=3000, help="num epochs")
     parser.add_argument("-b", "--batch_size", type=int, help="batch size")
-    parser.add_argument("-m", "--model", type=str, default="mlp", help="model type")
     parser.add_argument(
         "-r", "--resume", action="store_true", default=False, help="resume training"
     )

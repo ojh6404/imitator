@@ -14,9 +14,6 @@ from imitator.utils.obs_utils import get_normalize_params
 import argparse
 import torch
 
-ACTOR_TYPES = {"mlp": MLPActor, "rnn": RNNActor}
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-pn", "--project_name", type=str)
