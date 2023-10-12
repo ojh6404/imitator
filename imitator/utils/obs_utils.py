@@ -248,7 +248,6 @@ class FloatVectorModality(Modality):
         Vector like (B, D) or (B, T, D) torch tensor
         Unprocessing obs into a form that can be fed into the decoder like (B, D) or (B, T, D) numpy ndarray of float32.
         """
-
         assert len(processed_obs.shape) == 2 or len(processed_obs.shape) == 3
         # unprocessed_obs = processed_obs * self.std + self.mean
         unprocessed_obs = self.unnormalizer(processed_obs)

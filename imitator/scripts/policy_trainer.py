@@ -23,13 +23,14 @@ def main(args):
     print("========================================")
 
     train_config = config.network.policy.train
-
     train_config.batch_size = args.batch_size if args.batch_size else train_config.batch_size
     train_config.num_epochs = args.num_epochs if args.num_epochs else train_config.num_epochs
     config.dataset.hdf5_path = args.dataset if args.dataset else os.path.join(
         FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
     )
-    train_config.seq_length = config.network.policy.rnn.seq_length if args.model == "rnn" else 1
+    train_config.seq_length = config.network.policy.rnn.rnn_horizon if args.model == "rnn" else 1
+    config.dataset.seq_length = train_config.seq_length
+    config.dataset.frame_stack = config.network.policy.transformer.context_length if args.model == "transformer" else 1
     obs_keys = list(config.obs.keys())
     train_dataloader, valid_dataloader = TrainUtils.build_dataloader(
         obs_keys, config.dataset, train_config.batch_size
@@ -40,6 +41,7 @@ def main(args):
     print("Loaded Valid Dataset Trajectory Lengths: ", len(valid_dataloader.dataset))
     print("========================================")
 
+    TrainUtils.set_seed(args.seed)
     device = torch.device(args.device)
     actor_type = ACTOR_TYPES[args.model]
     model = actor_type(config).to(device)
@@ -92,7 +94,7 @@ def main(args):
             model.load_state_dict(
                 torch.load(FileUtils.get_best_runs(args.project_name, args.model))
             )
-        TrainUtils.verify(model, valid_dataloader.dataset)
+        TrainUtils.verify(model, valid_dataloader.dataset, seed=args.seed)
         return
 
     optimizer = eval("optim." + train_config.get("optimizer", "Adam"))(
@@ -156,6 +158,7 @@ def main(args):
             "epoch": epoch,
             "best_loss": best_loss,
             "train/loss": train_loss,
+            "train/mse": train_loss,
             "train/grad_norm": grad_norm,
             "valid/loss": valid_loss,
             "train/lr": optimizer.param_groups[0]["lr"],
@@ -174,7 +177,7 @@ def main(args):
     model.load_state_dict(
         torch.load(FileUtils.get_best_runs(args.project_name, args.model))
     )
-    TrainUtils.verify(model, valid_dataloader.dataset)
+    TrainUtils.verify(model, valid_dataloader.dataset, seed=args.seed)
 
 
 if __name__ == "__main__":
@@ -193,6 +196,7 @@ if __name__ == "__main__":
         "-v", "--verify", action="store_true", default=False, help="verify mode"
     )
     parser.add_argument("--device", type=str, default="cuda:0", help="device")
+    parser.add_argument("--seed", type=int, default=None, help="seed")
     parser.add_argument("-ckpt", "--checkpoint", type=str, help="checkpoint path")
     args = parser.parse_args()
 

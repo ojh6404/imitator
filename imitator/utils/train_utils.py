@@ -5,7 +5,6 @@ import os
 import numpy as np
 import cv2
 import torch
-
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
@@ -14,22 +13,27 @@ import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
 from imitator.utils.datasets import SequenceDataset
 
+
 # verify model
 @torch.no_grad()
-def verify(model, dataset):
+def verify(model, dataset, seed=None):
     import matplotlib.pyplot as plt
 
+    if seed is not None:
+        set_seed(seed)
     model.eval()
     random_index = np.random.randint(0, len(dataset))
-    test_action_seq = dataset[random_index]["actions"]  # [T, D]
-    test_obs_seq = dataset[random_index]["obs"]  # [T, D]
-    test_obs_seq = TensorUtils.to_batch(test_obs_seq)  # [1, T, D]
-    pred_action_seq = model(test_obs_seq, unnormalize=True)  # [1, T, D]
-    pred_action_seq = TensorUtils.squeeze(pred_action_seq, 0)  # [T, D]
-    plt.plot(test_action_seq, label="ground truth")
-    plt.plot(pred_action_seq, label="prediction")
+    test_batch = TensorUtils.to_batch(dataset[random_index])  # [1, T, D]
+    test_action = TensorUtils.squeeze(test_batch["actions"], 0)  # [T, D]
+    test_batch = TensorUtils.to_tensor(test_batch)  # [1, T, D]
+    test_batch = TensorUtils.to_device(test_batch, next(model.parameters()).device)
+    pred_action = model.get_action(test_batch)  # [1, T, D]
+    pred_action = TensorUtils.squeeze(pred_action, 0)  # [T, D]
+    plt.plot(test_action, label="ground truth")
+    plt.plot(pred_action, label="prediction")
     plt.legend()
     plt.show()
+
 
 @torch.no_grad()
 def verify_image(model, dataset, obs_key="image"):
@@ -61,6 +65,7 @@ def verify_image(model, dataset, obs_key="image"):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
+
 def train(model, batch, optimizer, max_grad_norm=None):
     model.train()
     train_info = model.forward_train(batch)  # all time steps
@@ -85,7 +90,7 @@ def validate(model, dataloader):
     valid_loss = 0.0
     for batch in dataloader:
         batch = TensorUtils.to_float(TensorUtils.to_device(batch, device))
-        valid_info = model(batch)
+        valid_info = model.forward_train(batch)
         _valid_loss = valid_info["loss"]
         valid_loss += _valid_loss.item()
     valid_loss /= len(dataloader.dataset)
@@ -135,6 +140,7 @@ def save_and_log(model, writer, logger_dict):
 
     return best_loss
 
+
 def build_dataloader(obs_keys, dataset_config, batch_size):
     train_dataset = SequenceDataset(
         obs_keys=obs_keys,  # observations we want to appear in batches
@@ -146,7 +152,6 @@ def build_dataloader(obs_keys, dataset_config, batch_size):
         filter_by_attribute="valid",
         **dataset_config,
     )
-
 
     train_dataloader = DataLoader(
         dataset=train_dataset,
@@ -165,3 +170,10 @@ def build_dataloader(obs_keys, dataset_config, batch_size):
         drop_last=False,
     )
     return train_dataloader, valid_dataloader
+
+
+def set_seed(seed=42):
+    if seed is not None:
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)

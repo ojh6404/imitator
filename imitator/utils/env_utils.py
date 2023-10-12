@@ -86,7 +86,7 @@ class RolloutBase(ABC):
         self.render_image = True and self.image_obs != []
 
         if self.actor_type == RNNActor:
-            self.rnn_seq_length = cfg.network.policy.rnn.seq_length
+            self.rnn_horizon = cfg.network.policy.rnn.rnn_horizon
 
         normalize = True  # TODO
         if normalize:
@@ -155,17 +155,17 @@ class RolloutBase(ABC):
         batch["obs"] = obs
         batch["actions"] = None # for dummy
         if self.actor_type == RNNActor:
-            if self.running_cnt % self.rnn_seq_length == 0:
+            if self.running_cnt % self.rnn_horizon == 0:
                 self.rnn_state = self.model.get_rnn_init_state(
                     batch_size=1, device=self.device
                 )
             with torch.no_grad():
                 pred_action, self.rnn_state = self.model.get_action(
-                    batch, rnn_state=self.rnn_state, unnormalize=True
+                    batch, rnn_state=self.rnn_state
                 )
         else:
             with torch.no_grad():
-                pred_action = self.model.get_action(batch, unnormalize=True)
+                pred_action = self.model.get_action(batch)
 
         if self.render_image:
             self.render(obs)
