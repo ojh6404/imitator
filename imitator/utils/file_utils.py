@@ -64,7 +64,6 @@ def get_config_file(project_name):
 def get_config_from_project_name(project_name):
     config_file = get_config_file(project_name)
     config = OmegaConf.load(config_file)
-    config = update_normlize_cfg(project_name, config)
     return config
 
 

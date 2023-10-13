@@ -30,6 +30,7 @@ if __name__ == "__main__":
         )
     )
     config = FileUtils.get_config_from_project_name(args.project_name)
+    config = FileUtils.update_normlize_cfg(args.project_name, config)
     if args.checkpoint is None:
         args.checkpoint = FileUtils.get_best_runs(args.project_name, args.model)
     config.network.policy.checkpoint = args.checkpoint

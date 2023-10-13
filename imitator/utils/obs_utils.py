@@ -271,6 +271,7 @@ class ImageModalityEncoder(ModalityEncoderBase):
 
         self.input_dim = cfg.obs_encoder.input_dim
         self.output_dim = cfg.obs_encoder.output_dim
+        self.layer_dims = cfg.obs_encoder.layer_dims
         self.trainable = cfg.obs_encoder.trainable
         self.has_decoder = cfg.obs_encoder.has_decoder
         self.encoder_model = cfg.obs_encoder.model
@@ -333,10 +334,10 @@ class ImageModalityEncoder(ModalityEncoderBase):
         else:
             self.nets["encoder"] = self.model
 
-        if cfg.obs_encoder.layer_dims is not None:
+        if self.layer_dims is not None:
             self.nets["mlp_encoder"] = MLP(
                 input_dim=self.model.output_dim,
-                layer_dims=cfg.obs_encoder.layer_dims,
+                layer_dims=self.layer_dims,
                 output_dim=self.output_dim,
                 activation=self.activation,
             )
@@ -365,6 +366,7 @@ class ImageModalityEncoder(ModalityEncoderBase):
             obs
         )  # to [0, 1] of [-1, C, H, W] torch float tensor
 
+        # TODO
         if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:
             latent, _, _ = self.nets["encoder"](
                 processed_obs

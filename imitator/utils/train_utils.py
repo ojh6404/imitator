@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
 from imitator.utils.datasets import SequenceDataset
+from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder
 
 
 # verify model
@@ -35,21 +36,31 @@ def verify(model, dataset, seed=None):
     plt.show()
 
 
+# verify model
 @torch.no_grad()
 def verify_image(model, dataset, obs_key="image"):
-    """
-    only for vision model which has decoder
-    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
     model.eval()
     random_index = np.random.randint(0, len(dataset))
-    test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray [B,H,W,C]
+    test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray (H, W, C)
 
-    test_image_numpy = test_image.squeeze(0).astype(np.uint8)
-    test_image_tensor = TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
-    test_image_tensor = (
-        test_image_tensor.permute(0, 3, 1, 2).float().contiguous() / 255.0
-    )
+    # transform = T.Compose(
+    #     [
+    #         AddGaussianNoise(mean=0.0, std=0.1, p=1.0),
+    #         # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
+    #         RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=1.0),
+    #         T.RandomApply([T.RandomResizedCrop(size=test_image.shape[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=1.0),
+    #         # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
+    #     ]
+    # )
+
+
+    test_image_tensor =  TensorUtils.to_float(TensorUtils.to_device(TensorUtils.to_tensor(test_image), device))
+    test_image_tensor = test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2).contiguous() / 255.0 # (1, C, H, W)
+    # test_image_tensor = transform(test_image_tensor)
+    test_image = (test_image_tensor.detach().cpu().squeeze(0).permute(1, 2, 0).numpy() * 255.0).astype(np.uint8)
+
     if args.model == "ae":
         x, z = model(test_image_tensor)
     elif args.model == "vae":
@@ -58,12 +69,42 @@ def verify_image(model, dataset, obs_key="image"):
     test_image_recon = (
         TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
     ).astype(np.uint8)
-    concat_image = np.concatenate([test_image_numpy, test_image_recon], axis=1)
+    concat_image = concatenate_image(test_image, test_image_recon)
     concat_image = cv2.cvtColor(concat_image, cv2.COLOR_RGB2BGR)
     print("Embedding shape: ", z.shape)
     cv2.imshow("verify", concat_image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+
+# @torch.no_grad()
+# def verify_image(model, dataset, obs_key="image"):
+#     """
+#     only for vision model which has decoder
+#     """
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     model.eval()
+#     random_index = np.random.randint(0, len(dataset))
+#     test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray [B,H,W,C]
+
+#     test_image_numpy = test_image.squeeze(0).astype(np.uint8)
+#     test_image_tensor = TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
+#     test_image_tensor = (
+#         test_image_tensor.permute(0, 3, 1, 2).float().contiguous() / 255.0
+#     )
+#     if args.model == "ae":
+#         x, z = model(test_image_tensor)
+#     elif args.model == "vae":
+#         x, z, mu, logvar = model(test_image_tensor)
+
+#     test_image_recon = (
+#         TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
+#     ).astype(np.uint8)
+#     concat_image = np.concatenate([test_image_numpy, test_image_recon], axis=1)
+#     concat_image = cv2.cvtColor(concat_image, cv2.COLOR_RGB2BGR)
+#     print("Embedding shape: ", z.shape)
+#     cv2.imshow("verify", concat_image)
+#     cv2.waitKey(0)
+#     cv2.destroyAllWindows()
 
 
 def train(model, batch, optimizer, max_grad_norm=None):

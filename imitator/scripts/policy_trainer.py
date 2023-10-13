@@ -17,6 +17,7 @@ import imitator.utils.train_utils as TrainUtils
 
 def main(args):
     config = FileUtils.get_config_from_project_name(args.project_name)
+    config = FileUtils.update_normlize_cfg(args.project_name, config)
     print("\n================ Config ================")
     FileUtils.print_config(config)
     print("========================================")
@@ -197,7 +198,7 @@ if __name__ == "__main__":
         "-pn", "--project_name", type=str, required=True, help="project name"
     )
     parser.add_argument("-d", "--dataset", type=str, help="path to hdf5 dataset")
-    parser.add_argument("-e", "--num_epochs", type=int, default=3000, help="num epochs")
+    parser.add_argument("-e", "--num_epochs", type=int, help="num epochs")
     parser.add_argument("-b", "--batch_size", type=int, help="batch size")
     parser.add_argument(
         "-r", "--resume", action="store_true", default=False, help="resume training"
