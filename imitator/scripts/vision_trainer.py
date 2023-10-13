@@ -79,9 +79,6 @@ def verify_image(model, dataset, obs_key="image", noise=False):
 
 def main(args):
     config = FileUtils.get_config_from_project_name(args.project_name)
-    print("\n================ Config ================")
-    FileUtils.print_config(config)
-    print("========================================")
 
     TrainUtils.set_seed(args.seed)
     device = torch.device(args.device)
@@ -108,14 +105,16 @@ def main(args):
         [obs_key], config.dataset, args.batch_size
     )
 
+    print("\n================ Config ================")
+    FileUtils.print_config(config)
+    print("========================================")
     print("\n================ Dataset ================")
     print("Loaded Train Dataset Trajectory Lengths: ", len(train_dataloader.dataset))
     print("Loaded Valid Dataset Trajectory Lengths: ", len(valid_dataloader.dataset))
     print("========================================")
-
     print("\n================ Model ================")
     print(model)
-    print("=======================================")
+    print("========================================")
 
     # data augmentation
     if data_augmentation:

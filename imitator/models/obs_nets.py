@@ -117,6 +117,7 @@ class ConvEncoder(VisionModule):
         dropouts: Optional[List[float]] = None,
         normalization=None,
         output_activation: Optional[nn.Module] = None,
+        **kwargs,
     ) -> None:
         super(ConvEncoder, self).__init__()
         output_conv_size = calculate_conv_output_size(
@@ -213,6 +214,7 @@ class ConvDecoder(VisionModule):
         dropouts: Optional[List[float]] = None,
         normalization=None,
         output_activation: Optional[nn.Module] = nn.Sigmoid,
+        **kwargs,
     ) -> None:
         super(ConvDecoder, self).__init__()
 
@@ -273,6 +275,7 @@ class AutoEncoder(VisionModule):
         dropouts: Optional[List[float]] = None,
         normalization=nn.BatchNorm2d,
         output_activation: Optional[nn.Module] = nn.Sigmoid,
+        **kwargs,
     ) -> None:
         super(AutoEncoder, self).__init__()
 
@@ -349,6 +352,8 @@ class VariationalAutoEncoder(VisionModule):
         dropouts: Optional[List[float]] = None,
         normalization=nn.BatchNorm2d,
         output_activation: Optional[nn.Module] = nn.Sigmoid,
+        kld_weight: float = 1e-1,
+        **kwargs,
     ) -> None:
         super(VariationalAutoEncoder, self).__init__()
         assert (
@@ -365,6 +370,8 @@ class VariationalAutoEncoder(VisionModule):
             strides=strides,
             paddings=paddings,
         )
+
+        self.kld_weight = kld_weight
 
         self.nets = nn.ModuleDict()
         self.nets["encoder"] = ConvEncoder(
@@ -405,14 +412,13 @@ class VariationalAutoEncoder(VisionModule):
 
     def kld_loss(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         # kld_weight = 1e-1 / torch.prod(torch.Tensor(mu.shape)) # TODO
-        batch_size = mu.size(0)
-        kld_weight = 1e-1 * mu.size(1) / (224 * 224 * 3 * batch_size)  # TODO
+        # kld_weight = 1e2 * mu.size(1) / (224 * 224 * 3 * batch_size)  # TODO
         kl_loss = (
             torch.mean(
                 -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1),
                 dim=0,
             )
-            * kld_weight
+            * self.kld_weight
         )
         return kl_loss
 
@@ -448,6 +454,7 @@ class SlotAttentionEncoder(VisionModule):
         normalization=None,
         output_activation: Optional[nn.Module] = nn.ReLU,
         num_slots: int = 7,
+        **kwargs,
     ) -> None:
         super(SlotAttentionEncoder, self).__init__()
 
@@ -557,6 +564,7 @@ class SlotAttentionDecoder(VisionModule):
         normalization=None,
         output_activation: Optional[nn.Module] = None,
         num_slots: int = 7,
+        **kwargs,
     ) -> None:
         super(SlotAttentionDecoder, self).__init__()
         hid_dim = 64
@@ -623,6 +631,7 @@ class SlotAttentionAutoEncoder(VisionModule):
         dropouts: Optional[List[float]] = None,
         normalization=nn.BatchNorm2d,
         output_activation: Optional[nn.Module] = nn.Sigmoid,
+        **kwargs,
     ) -> None:
         super(SlotAttentionAutoEncoder, self).__init__()
 
@@ -647,6 +656,7 @@ class Resnet(VisionModule):
         pool: Optional[str] = "SpatialSoftmax",
         latent_dim: Optional[int] = None,
         pool_kwargs: Optional[Dict[str, Any]] = None,
+        **kwargs,
     ) -> None:
         super(Resnet, self).__init__()
 
@@ -748,6 +758,7 @@ class R3M(VisionModule):
         input_channel: int = 3,
         r3m_type: str = "resnet18",
         pretrained: bool = True,
+        **kwargs,
     ) -> None:
         super(R3M, self).__init__()
 
@@ -828,6 +839,7 @@ class CLIP(VisionModule):
         input_channel: int = 3,
         clip_type: str = "ViT-B/32",
         pretrained: bool = True,
+        **kwargs,
     ) -> None:
         super(CLIP, self).__init__()
 
@@ -857,6 +869,7 @@ class MVP(VisionModule):
         input_channel=3,
         mvp_model_class="vitb-mae-egosoup",
         freeze=True,
+        **kwargs,
     ):
         super(MVP, self).__init__()
 
