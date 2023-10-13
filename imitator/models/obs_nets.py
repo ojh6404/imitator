@@ -83,6 +83,22 @@ def calculate_deconv_output_size(
 
 
 class VisionModule(nn.Module):
+    def __init__(self) -> None:
+        super(VisionModule, self).__init__()
+        self.training = True
+        self.data_augmentation = False
+
+    def eval(self) -> "VisionModule":
+        self.training = False
+        return super(VisionModule, self).eval()
+
+    def train(self, mode: bool = True) -> "VisionModule":
+        self.training = True
+        return super(VisionModule, self).train(mode)
+
+    def augmentation(self, inputs: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
     """
     inputs like uint8 (B, C, H, W) or (B, C, H, W) or (C, H, W) torch.Tensor
     """
@@ -294,6 +310,8 @@ class AutoEncoder(VisionModule):
             paddings=paddings,
         )
 
+        self.criterion = nn.MSELoss()
+
         self.nets = nn.ModuleDict()
         self.nets["encoder"] = ConvEncoder(
             input_size=input_size,
@@ -324,17 +342,23 @@ class AutoEncoder(VisionModule):
             output_activation=output_activation,
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         z = self.nets["encoder"](x)
         x = self.nets["decoder"](z)
         return x, z
 
-    def loss(self, x: torch.Tensor) -> torch.Tensor:
-        loss_dict = {}
-        x_hat, z = self.forward(x)
-        reconstruction_loss = nn.MSELoss()(x_hat, x)
-        loss_dict["reconstruction_loss"] = reconstruction_loss
-        return loss_dict
+    def forward_train(
+        self, x: torch.Tensor, ground_truth: torch.Tensor
+    ) -> Dict[str, torch.Tensor]:
+        outputs = OrderedDict()
+        z = self.nets["encoder"](x)
+        reconstruction = self.nets["decoder"](z)
+        reconstruction_loss = self.criterion(reconstruction, ground_truth)
+        outputs["reconstruction"] = reconstruction
+        outputs["z"] = z
+        outputs["reconstruction_loss"] = reconstruction_loss
+        outputs["loss"] = reconstruction_loss
+        return outputs
 
 
 class VariationalAutoEncoder(VisionModule):
@@ -372,6 +396,7 @@ class VariationalAutoEncoder(VisionModule):
         )
 
         self.kld_weight = kld_weight
+        self.criterion = nn.MSELoss()
 
         self.nets = nn.ModuleDict()
         self.nets["encoder"] = ConvEncoder(
@@ -403,33 +428,40 @@ class VariationalAutoEncoder(VisionModule):
             output_activation=output_activation,
         )
 
-    def forward(
-        self, x: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         z, mu, logvar = self.nets["encoder"](x)
         x = self.nets["decoder"](z)
-        return x, z, mu, logvar
+        return x, z
 
-    def kld_loss(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
-        # kld_weight = 1e-1 / torch.prod(torch.Tensor(mu.shape)) # TODO
+    def forward_train(
+        self, batch: Dict[str, torch.Tensor]
+    ) -> Dict[str, torch.Tensor]:
+        outputs = OrderedDict()
+        x = batch["obs"]
+        ground_truth = batch["ground_truth"]
+        z, mu, logvar = self.nets["encoder"](x)
+        reconstruction = self.nets["decoder"](z)
+        reconstruction_loss = self.criterion(reconstruction, ground_truth)
+        kld_loss = self.compute_kld(mu, logvar)
+        outputs["reconstruction"] = reconstruction
+        outputs["z"] = z
+        outputs["mu"] = mu
+        outputs["logvar"] = logvar
+        outputs["reconstruction_loss"] = reconstruction_loss
+        outputs["kld_loss"] = kld_loss
+        outputs["loss"] = reconstruction_loss + kld_loss
+        return outputs
+
+    def compute_kld(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         # kld_weight = 1e2 * mu.size(1) / (224 * 224 * 3 * batch_size)  # TODO
-        kl_loss = (
+        kld_loss = (
             torch.mean(
                 -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1),
                 dim=0,
             )
             * self.kld_weight
         )
-        return kl_loss
-
-    def loss(self, x: torch.Tensor, ground_truth: torch.Tensor) -> torch.Tensor:
-        loss_dict = dict()
-        x_hat, z, mu, logvar = self.forward(x)
-        reconstruction_loss = nn.MSELoss()(x_hat, ground_truth)
-        kld_loss = self.kld_loss(mu, logvar)
-        loss_dict["reconstruction_loss"] = reconstruction_loss
-        loss_dict["kld_loss"] = kld_loss
-        return loss_dict
+        return kld_loss
 
 
 class SlotAttentionEncoder(VisionModule):

@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 
 import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
+import imitator.utils.obs_utils as ObsUtils
 from imitator.utils.datasets import SequenceDataset
 from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder
 
@@ -38,73 +39,55 @@ def verify(model, dataset, seed=None):
 
 # verify model
 @torch.no_grad()
-def verify_image(model, dataset, obs_key="image"):
+def verify_image(model, dataset, obs_key="image", noise=False):
+    import torchvision.transforms as T
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.eval()
     random_index = np.random.randint(0, len(dataset))
-    test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray (H, W, C)
+    test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray [1, H, W, C]
+    if noise:
+        add_noise = T.Compose(
+            [
+                ObsUtils.AddGaussianNoise(mean=0.0, std=0.1, p=1.0),
+                ObsUtils.RGBShifter(
+                    r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=1.0
+                ),
+                T.RandomApply(
+                    [
+                        T.RandomResizedCrop(
+                            size=test_image.shape[1:3],
+                            scale=(0.8, 1.0),
+                            ratio=(0.8, 1.2),
+                            antialias=True,
+                        )
+                    ],
+                    p=1.0,
+                ),
+            ]
+        )
+    test_image_tensor = TensorUtils.to_float(
+        TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
+    )
+    test_image_tensor = (
+        test_image_tensor.permute(0, 3, 1, 2).contiguous() / 255.0
+    )  # (1, C, H, W)
+    if noise:
+        test_image_tensor = add_noise(test_image_tensor)
+    test_image = (
+        test_image_tensor.detach().cpu().squeeze(0).permute(1, 2, 0).numpy() * 255.0
+    ).astype(np.uint8)
 
-    # transform = T.Compose(
-    #     [
-    #         AddGaussianNoise(mean=0.0, std=0.1, p=1.0),
-    #         # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
-    #         RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=1.0),
-    #         T.RandomApply([T.RandomResizedCrop(size=test_image.shape[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=1.0),
-    #         # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
-    #     ]
-    # )
-
-
-    test_image_tensor =  TensorUtils.to_float(TensorUtils.to_device(TensorUtils.to_tensor(test_image), device))
-    test_image_tensor = test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2).contiguous() / 255.0 # (1, C, H, W)
-    # test_image_tensor = transform(test_image_tensor)
-    test_image = (test_image_tensor.detach().cpu().squeeze(0).permute(1, 2, 0).numpy() * 255.0).astype(np.uint8)
-
-    if args.model == "ae":
-        x, z = model(test_image_tensor)
-    elif args.model == "vae":
-        x, z, mu, logvar = model(test_image_tensor)
-
+    x, z = model(test_image_tensor)
     test_image_recon = (
         TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
     ).astype(np.uint8)
-    concat_image = concatenate_image(test_image, test_image_recon)
+    concat_image = ObsUtils.concatenate_image(test_image, test_image_recon)
     concat_image = cv2.cvtColor(concat_image, cv2.COLOR_RGB2BGR)
     print("Embedding shape: ", z.shape)
     cv2.imshow("verify", concat_image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-
-# @torch.no_grad()
-# def verify_image(model, dataset, obs_key="image"):
-#     """
-#     only for vision model which has decoder
-#     """
-#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     model.eval()
-#     random_index = np.random.randint(0, len(dataset))
-#     test_image = dataset[random_index]["obs"][obs_key]  # numpy ndarray [B,H,W,C]
-
-#     test_image_numpy = test_image.squeeze(0).astype(np.uint8)
-#     test_image_tensor = TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
-#     test_image_tensor = (
-#         test_image_tensor.permute(0, 3, 1, 2).float().contiguous() / 255.0
-#     )
-#     if args.model == "ae":
-#         x, z = model(test_image_tensor)
-#     elif args.model == "vae":
-#         x, z, mu, logvar = model(test_image_tensor)
-
-#     test_image_recon = (
-#         TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
-#     ).astype(np.uint8)
-#     concat_image = np.concatenate([test_image_numpy, test_image_recon], axis=1)
-#     concat_image = cv2.cvtColor(concat_image, cv2.COLOR_RGB2BGR)
-#     print("Embedding shape: ", z.shape)
-#     cv2.imshow("verify", concat_image)
-#     cv2.waitKey(0)
-#     cv2.destroyAllWindows()
 
 
 def train(model, batch, optimizer, max_grad_norm=None):
@@ -139,17 +122,21 @@ def validate(model, dataloader):
 
 
 def save_and_log(model, writer, logger_dict):
-    project_name = logger_dict["project_name"]
-    model_type = logger_dict["model_type"]
-    output_dir = logger_dict["output_dir"]
-    model_path = logger_dict["model_path"]
-    epoch = logger_dict["epoch"]
-    best_loss = logger_dict["best_loss"]
-    train_loss = logger_dict["train/loss"]
-    valid_loss = logger_dict["valid/loss"]
-    train_lr = logger_dict["train/lr"]
-    grad_norm = logger_dict["train/grad_norm"]
-    inference_time = logger_dict["train/inference_time"]
+    # common info
+    epoch = logger_dict.pop("epoch")
+    best_loss = logger_dict.pop("best_loss")
+    train_loss = logger_dict.pop("train/loss")
+    valid_loss = logger_dict.pop("valid/loss")
+    train_lr = logger_dict.pop("train/lr")
+    grad_norm = logger_dict.pop("train/grad_norm")
+    inference_time = logger_dict.pop("train/inference_time")
+    output_dir = logger_dict.pop("output_dir")
+    model_type = logger_dict.pop("model_type")
+    model_path = logger_dict.pop("model_path")
+    project_name = logger_dict.pop("project_name")
+
+    # TODO add more info for each model
+
     if epoch % 100 == 0:
         print(
             f"epoch: {epoch}, train loss: {train_loss:.5g}, valid loss: {valid_loss:.5g}"
