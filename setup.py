@@ -27,9 +27,10 @@ setup(
         "imageio",
         "imageio-ffmpeg",
         "matplotlib",
-        "egl_probe>=1.0.1",
         "torch",
         "torchvision",
+        "einops",
+        "omegaconf",
     ],
     eager_resources=['*'],
     include_package_data=True,
@@ -38,7 +39,7 @@ setup(
     author="Jihoon Oh",
     url="https://github.com/ojh6404/imitator",
     author_email="oh@jsk.imi.i.u-tokyo.ac.jp",
-    version="0.0.1",
+    version="0.0.2",
     # long_description=long_description,
     # long_description_content_type='text/markdown'
 )
