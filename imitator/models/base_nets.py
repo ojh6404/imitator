@@ -67,8 +67,8 @@ class Normalize(nn.Module):
         self.register_buffer("std", self._std)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if len(x.shape) == 4:  # [B, C, H, W]
-            return (x - self.mean[None, :, None, None]) / self.std[None, :, None, None]
+        # if len(x.shape) == 4:  # [B, C, H, W]
+        #     return (x - self.mean[None, :, None, None]) / self.std[None, :, None, None]
         return (x - self.mean) / self.std
 
 

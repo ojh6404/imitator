@@ -288,11 +288,15 @@ class ImageModalityEncoder(ModalityEncoderBase):
         # if [-1, 1] : mean = 255.0 / 2.0, std = 255.0 / 2.0
         # if normalize with MEAN and STD after [0, 1] : mean = 255 * MEAN, std = 255 * STD
         if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]: # TODO
+            # [0, 255] -> [0, 1]
             mean = 0.0
             std = 255.0
         elif self.encoder_model == "Resnet":
-            mean = np.array(MEAN) * 255.0
-            std = np.array(STD) * 255.0
+            # [0, 255] -> [0, 1]
+            mean = 0.0
+            std = 255.0
+            # mean = np.array(MEAN) * 255.0
+            # std = np.array(STD) * 255.0
         else:
             # do not normalize
             mean = 0.0
