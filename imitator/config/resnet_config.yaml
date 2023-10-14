@@ -25,7 +25,7 @@ obs: # input into policy
       activation: "ReLU" # [ReLU, Tanh...]
   agentview_image:
     modality: "ImageModality"
-    normalize: False
+    normalize: True
     data_augmentation: True
     obs_encoder:
       model: "Resnet"
@@ -35,7 +35,7 @@ obs: # input into policy
         input_channel: 3
         resnet_type: "resnet18"
         input_coord_conv: False
-        pretrained: False,
+        pretrained: False
         latent_dim: 64
         pool: "SpatialSoftmax"
         pool_kwargs:
@@ -53,7 +53,7 @@ obs: # input into policy
       freeze: False
   robot0_eye_in_hand_image:
     modality: "ImageModality"
-    normalize: False
+    normalize: True
     data_augmentation: True
     obs_encoder:
       model: "Resnet"
@@ -63,7 +63,7 @@ obs: # input into policy
         input_channel: 3
         resnet_type: "resnet18"
         input_coord_conv: False
-        pretrained: False,
+        pretrained: False
         latent_dim: 64
         pool: "SpatialSoftmax"
         pool_kwargs:
@@ -130,5 +130,5 @@ dataset:
   pad_seq_length: True
   get_pad_mask: False
   goal_mode: null
-  hdf5_cache_mode: "all"
+  hdf5_cache_mode: null
   hdf5_use_swmr: True

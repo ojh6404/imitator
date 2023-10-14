@@ -103,12 +103,8 @@ class VisionModule(nn.Module):
     inputs like uint8 (B, C, H, W) or (B, C, H, W) or (C, H, W) torch.Tensor
     """
 
-    # @abstractmethod
-    # def preprocess(self, inputs: torch.Tensor) -> torch.Tensor:
-    #     """
-    #     preprocess inputs to fit the pretrained model
-    #     """
-    #     raise NotImplementedError
+    def preprocess(self, inputs: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         return self.net(inputs)
@@ -685,7 +681,7 @@ class Resnet(VisionModule):
         resnet_type: str = "resnet18",  # resnet18, resnet34, resnet50, resnet101, resnet152
         input_coord_conv: bool = False,
         pretrained: bool = False,
-        pool: Optional[str] = "SpatialSoftmax",
+        pool: Optional[str] = "SpatialSoftmax", # TODO seperate it from resnet
         latent_dim: Optional[int] = None,
         pool_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,
@@ -716,12 +712,15 @@ class Resnet(VisionModule):
         }
         if pretrained:
             weights = RESNET_WEIGHTS[resnet_type]
+            self.transform = RESNET_WEIGHTS[resnet_type].transforms()
         else:
             weights = None
 
+        self.pretrained = pretrained
         self.nets = nn.ModuleDict()
         resnet = getattr(vision_models, resnet_type)(weights=weights)
 
+        # for coord conv
         if input_coord_conv:
             resnet.conv1 = CoordConv(
                 input_channel,
@@ -741,6 +740,7 @@ class Resnet(VisionModule):
                 bias=False,
             )
 
+        # for pool
         if pool is not None:
             pool_kwargs.update({"input_shape": RESNET_OUTPUT_DIM[resnet_type]})
             self.pool = eval(pool)(**pool_kwargs)
@@ -772,15 +772,15 @@ class Resnet(VisionModule):
             if latent_dim is not None
             else np.prod(RESNET_OUTPUT_DIM[resnet_type])
         )
-        if pretrained:
-            self.preprocess = RESNET_WEIGHTS[resnet_type].transforms()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x expected to be [B, C, H, W] with C=3 and torch tensor of uint8
-        if hasattr(self, "preprocess"):
+        if self.pretrained:
             x = self.preprocess(x)
         x = self.nets["encoder"](x)
         return x
+
+    def preprocess(self, inputs: torch.Tensor) -> torch.Tensor:
+        return self.transform(inputs)
 
 
 class R3M(VisionModule):

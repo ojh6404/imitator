@@ -269,6 +269,8 @@ class ImageModalityEncoder(ModalityEncoderBase):
     def __init__(self, cfg: Dict, obs_name: str) -> None:
         self.cfg = cfg
 
+        self.normalize =  cfg.normalize
+        self.data_augmentation = cfg.data_augmentation
         self.input_dim = cfg.obs_encoder.input_dim
         self.output_dim = cfg.obs_encoder.output_dim
         self.layer_dims = cfg.obs_encoder.layer_dims
@@ -279,24 +281,14 @@ class ImageModalityEncoder(ModalityEncoderBase):
         self.model_kwargs = cfg.obs_encoder.model_kwargs
         self.activation = eval("nn." + cfg.get("activation", "ReLU"))
 
-        MEAN = [0.485, 0.456, 0.406]
-        STD = [0.229, 0.224, 0.225]
-
         # normalization spec
         # original : [0, 255]
         # if [0, 1] : mean = 0.0, std = 1.0
         # if [-1, 1] : mean = 255.0 / 2.0, std = 255.0 / 2.0
         # if normalize with MEAN and STD after [0, 1] : mean = 255 * MEAN, std = 255 * STD
-        if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]: # TODO
+        if self.normalize:
             # [0, 255] -> [0, 1]
-            mean = 0.0
-            std = 255.0
-        elif self.encoder_model == "Resnet":
-            # [0, 255] -> [0, 1]
-            mean = 0.0
-            std = 255.0
-            # mean = np.array(MEAN) * 255.0
-            # std = np.array(STD) * 255.0
+            mean, std = 0.0, 255.0
         else:
             # do not normalize
             mean = 0.0
