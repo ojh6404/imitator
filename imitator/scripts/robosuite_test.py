@@ -1,5 +1,4 @@
 import os
-import cv2
 import numpy as np
 import robosuite as suite
 
@@ -9,16 +8,13 @@ from imitator.utils.obs_utils import FloatVectorModality
 import imitator.utils.file_utils as FileUtils
 import imitator.utils.env_utils as EnvUtils
 from imitator.utils.env_utils import RobosuiteRollout
-from imitator.utils.obs_utils import get_normalize_params
 
 import argparse
-import torch
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-pn", "--project_name", type=str)
     parser.add_argument("-d", "--dataset", type=str)
-    parser.add_argument("-m", "--model", type=str)
     parser.add_argument("-ckpt", "--checkpoint", type=str)
     args = parser.parse_args()
 
@@ -31,8 +27,6 @@ if __name__ == "__main__":
     )
     config = FileUtils.get_config_from_project_name(args.project_name)
     config = FileUtils.update_normlize_cfg(args.project_name, config)
-    if args.checkpoint is None:
-        args.checkpoint = FileUtils.get_best_runs(args.project_name, args.model)
     config.network.policy.checkpoint = args.checkpoint
     config.project_name = args.project_name
     config.dataset_path = dataset_path
