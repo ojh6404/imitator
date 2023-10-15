@@ -3,6 +3,7 @@
 import sys
 import numpy as np
 import textwrap
+import math
 from copy import deepcopy
 from collections import OrderedDict
 
@@ -690,13 +691,15 @@ class Resnet(VisionModule):
 
         assert input_channel == 3, "input_channel should be 3"
 
+        output_shape = [math.ceil(input_size[0] / 32), math.ceil(input_size[1] / 32)]
+
         RESNET_TYPES = ["resnet18", "resnet34", "resnet50", "resnet101", "resnet152"]
         RESNET_OUTPUT_DIM = {
-            "resnet18": [512, 7, 7],  # [2048, 7, 7
-            "resnet34": [512, 7, 7],
-            "resnet50": [2048, 7, 7],
-            "resnet101": [2048, 7, 7],
-            "resnet152": [2048, 7, 7],
+            "resnet18": [512] + output_shape,
+            "resnet34": [512] + output_shape,
+            "resnet50": [2048] + output_shape,
+            "resnet101": [2048] + output_shape,
+            "resnet152": [2048] + output_shape,
         }
 
         assert (
@@ -759,11 +762,11 @@ class Resnet(VisionModule):
         if latent_dim is not None:
             if self.pool is not None:
                 encoder_list.append(
-                    nn.Linear(np.prod(self.pool.output_dim), latent_dim)
+                    nn.Linear(int(np.prod(self.pool.output_dim)), latent_dim)
                 )
             else:
                 encoder_list.append(
-                    nn.Linear(np.prod(RESNET_OUTPUT_DIM[resnet_type]), latent_dim)
+                    nn.Linear(int(np.prod(RESNET_OUTPUT_DIM[resnet_type])), latent_dim)
                 )
         self.nets["encoder"] = nn.Sequential(*encoder_list)
 

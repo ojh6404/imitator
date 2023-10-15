@@ -564,6 +564,7 @@ class SpatialSoftmax(nn.Module):
                 keypoint variance of shape [B, K, 2, 2] corresponding to the covariance
                 under the 2D spatial softmax distribution
         """
+
         assert feature.shape[1] == self._in_c
         assert feature.shape[2] == self._in_h
         assert feature.shape[3] == self._in_w
