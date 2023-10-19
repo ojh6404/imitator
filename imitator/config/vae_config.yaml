@@ -31,7 +31,7 @@ obs: # input into policy
       model: "VariationalAutoEncoder"
       model_path: null
       model_kwargs:
-        input_size: [224, 224]
+        input_size: [128, 128]
         input_channel: 3
         channels: [8, 16, 32, 64, 128, 256]
         encoder_kernel_sizes: [3, 3, 3, 3, 3, 3]
@@ -44,7 +44,7 @@ obs: # input into policy
         # normalization: "BatchNorm2d"
         # output_activation: "Sigmoid"
       trainable: True
-      input_dim: [224, 224, 3]
+      input_dim: [128, 128, 3]
       activation: "ReLU"
       layer_dims: null
       output_dim: 32
@@ -58,7 +58,7 @@ obs: # input into policy
       model: "VariationalAutoEncoder"
       model_path: null
       model_kwargs:
-        input_size: [224, 224]
+        input_size: [128, 128]
         input_channel: 3
         channels: [8, 16, 32, 64, 128, 256]
         encoder_kernel_sizes: [3, 3, 3, 3, 3, 3]
@@ -70,7 +70,7 @@ obs: # input into policy
         # normalization: "BatchNorm2d"
         # output_activation: "Sigmoid"
       trainable: True
-      input_dim: [224, 224, 3]
+      input_dim: [128, 128, 3]
       activation: "ReLU"
       layer_dims: null
       output_dim: 32

@@ -1,15 +1,12 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
-from moviepy.editor import ImageSequenceClip
-from segment_anything import SamPredictor, sam_model_registry
+from segment_anything_hq import SamPredictor, sam_model_registry
 from tqdm import tqdm
 import os
 import argparse
 import numpy as np
-from omegaconf import OmegaConf
 import h5py
-
-import tkinter as tk
+import rospkg
 
 from copy import deepcopy
 
@@ -122,7 +119,6 @@ def resize_roi_from_bbox(image, bbox, shape=(64,64)):
         resized_roi_image = np.zeros((shape[0], shape[1], 3)).astype(np.uint8)
     else:
         roi_image = image[bbox[1]:bbox[3], bbox[0]:bbox[2], :] # [H, W, C]
-        # roi_image = image[bbox[1]-5:bbox[3]+5, bbox[0]-5:bbox[2]+5, :] # [H, W, C]
         resized_roi_image = cv2.resize(roi_image, shape) # [C, H, W]
     return resized_roi_image
 
@@ -139,20 +135,22 @@ def main(args):
     )
     obs_keys = list(config.obs.keys())
 
+    perception_pkg_path = rospkg.RosPack().get_path("tracking_ros")
+    print("perception_pkg_path: {}".format(perception_pkg_path))
+
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     print("Processing dataset: {}".format(hdf5_path))
-    dino_config =  "/home/oh/ros/pr2_ws/src/eus_imitation/imitator/imitator/scripts/GroundingDINO_SwinT_OGC.py"
-
-    dino_checkpoint = download_checkpoint("dino","./")
+    dino_config =  os.path.join(perception_pkg_path, "config/GroundingDINO_SwinT_OGC.py")
+    dino_checkpoint = download_checkpoint("dino", os.path.join(perception_pkg_path, "checkpoints"))
     grounding_dino = load_model(dino_config, dino_checkpoint, device=device)
 
-    sam_checkpoint = download_checkpoint("sam_vit_b", "./")
-    sam = sam_model_registry["vit_b"](checkpoint=sam_checkpoint).to(device)
+    sam_checkpoint = download_checkpoint("sam_hq_vit_h", os.path.join(perception_pkg_path, "checkpoints"))
+    sam = sam_model_registry["vit_h"](checkpoint=sam_checkpoint).to(device)
     predictor = SamPredictor(sam)
 
-    xmem_checkpoint = download_checkpoint("xmem", "./")
-    tracker_config =  "/home/oh/ros/pr2_ws/src/eus_imitation/imitator/imitator/scripts/tracker_config.yaml"
+    xmem_checkpoint = download_checkpoint("xmem", os.path.join(perception_pkg_path, "checkpoints"))
+    tracker_config =  os.path.join(perception_pkg_path, "config/tracker_config.yaml")
     xmem = BaseTracker(xmem_checkpoint, tracker_config, device="cuda:0")
 
 
@@ -165,6 +163,14 @@ def main(args):
 
     data_group = processed_dataset.create_group("data")
 
+    # copy metadata
+    if "mask" in original_dataset.keys():
+        mask_group = processed_dataset.create_group("mask")
+        for mask_key in original_dataset["mask"].keys():
+            print("mask_key: {}".format(mask_key))
+            print("original_dataset[mask_key]: {}".format(original_dataset["mask/{}".format(mask_key)][:]))
+
+            mask_group.create_dataset(mask_key, data=original_dataset["mask/{}".format(mask_key)][:])
 
     # concatenate text into one string
     num_objects = len(args.text_prompt)
@@ -186,6 +192,7 @@ def main(args):
 
         # copy obs
         obs_group = demo_group.create_group("obs")
+        next_obs_group = demo_group.create_group("next_obs")
         for obs_key in obs_keys:
 
             # create mask if obs's modality is ImageModality
@@ -255,10 +262,6 @@ def main(args):
                         text_threshold=args.text_threshold,
                         )
 
-                    # ordering bbox with phrases be text order
-                    # print("phrases", phrases)
-
-
                     ordered_bboxes = []
                     for txt in args.text_prompt:
                         for i, phrase in enumerate(phrases):
@@ -327,12 +330,8 @@ def main(args):
                                 points = []
                                 cv2.destroyAllWindows()
                                 break
-
                 template_mask = compose_mask(first_masks) # [H, W] with 0, 1, 2, 3, ... N, 0 is background
                 masks = [] # [T, H, W]
-                object_slot_images = [] # [T, N, H, W, C]
-                cropped_rois = [] # [T, N, H, W, C]
-
 
                 for i, original_image in enumerate(original_images):
                     if i == 0:
@@ -341,69 +340,54 @@ def main(args):
                         template_mask, logit = xmem.track(frame=original_image)
                     masks.append(template_mask)
 
-                    # masked_image = masking_image(original_image, template_mask)
-                    bboxes = mask_to_bbox(template_mask, num_objects=len(args.text_prompt)) # [N, 4]
-                    assert len(bboxes) == len(args.text_prompt)
-
-                    object_mask_images = seperate_each_object_from_image(original_image, template_mask, num_objects=len(args.text_prompt)) # [N, H, W, C]
-                    object_slot_images.append(object_mask_images) # [T, N, H, W, C]
-
-                    cropped_roi = [] # [N, H, W, C]
-                    for i, bbox in enumerate(bboxes):
-                        # object_mask_image = masking_image(original_image, bbox)
-                        resized_roi_image = resize_roi_from_bbox(object_mask_images[i], bbox, (224, 224))
-                        cropped_roi.append(resized_roi_image)
-
-                    cropped_roi = np.stack(cropped_roi, axis=0) # [N, H, W, C]
-                    cropped_rois.append(cropped_roi) # [T, N, H, W, C]
-
                     # for debug
                     if args.debug:
-                        # visualize cropped roi image like [H, W*N, C]
-                        # debug_image = np.concatenate(cropped_roi, axis=1)
-                        debug_image = np.concatenate(object_mask_images, axis=1)
+                        debug_image = np.zeros(original_image.shape, dtype=np.uint8)
+                        # draw mask 1==R, 2==G, 3==B
+                        for n in range(3):
+                            debug_image[:, :, n] = (template_mask == (n+1)).astype(np.uint8) * 255
                         cv2.imshow("debug", cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR))
                         cv2.waitKey(1)
                 xmem.clear_memory()
-
                 masks = np.stack(masks, axis=0) # [T, H, W]
-                object_slot_images = np.stack(object_slot_images, axis=0) # [T, N, H, W, C]
 
-                # object slot mask is [T, H, W, N]
-                object_slot_mask = np.zeros((masks.shape[0], masks.shape[1], masks.shape[2], len(args.text_prompt)), dtype=np.uint8)
-                for t in range(masks.shape[0]):
-                    for n in range(len(args.text_prompt)):
-                        object_slot_mask[t, :, :, n] = (masks[t] == (n+1)).astype(np.uint8) * 255
-
-                cropped_rois = np.stack(cropped_rois, axis=0) # [T, N, H, W, C]
                 # save mask
                 obs_group.create_dataset(
                     obs_key + "_mask",
                     data=masks,
                     dtype=masks.dtype,
                 )
-                obs_group.create_dataset(
-                    obs_key + "_object_slot_mask",
-                    data=object_slot_mask,
-                    dtype=object_slot_mask.dtype,
+                next_obs_group.create_dataset(
+                    obs_key + "_mask",
+                    data=np.concatenate([masks[1:], masks[-1:]], axis=0),
+                    dtype=masks.dtype,
                 )
+
+                rgb_mask = np.zeros((masks.shape[0], masks.shape[1], masks.shape[2], 3), dtype=np.uint8)
+                for n in range(3):
+                    rgb_mask[:, :, :, n] = (masks == (n+1)).astype(np.uint8) * 255
+
+                # save rgb mask
                 obs_group.create_dataset(
-                    obs_key + "_roi",
-                    data=cropped_rois,
-                    dtype=cropped_rois.dtype,
+                    obs_key + "_mask_rgb",
+                    data=rgb_mask,
+                    dtype=rgb_mask.dtype,
                 )
-                obs_group.create_dataset(
-                    obs_key + "_object_slot",
-                    data=object_slot_images,
-                    dtype=object_slot_images.dtype,
+                next_obs_group.create_dataset(
+                    obs_key + "_mask_rgb",
+                    data=np.concatenate([rgb_mask[1:], rgb_mask[-1:]], axis=0),
+                    dtype=rgb_mask.dtype,
                 )
-                # print("cropped roi shape", cropped_rois.shape)
-                # print("mask shape", masks.shape)
 
             obs_group.create_dataset(
                 obs_key,
                 data=original_dataset["data"][demo]["obs"][obs_key],
                 dtype=original_dataset["data"][demo]["obs"][obs_key].dtype,
+            )
+            next_obs_group.create_dataset(
+                obs_key,
+                data=original_dataset["data"][demo]["next_obs"][obs_key],
+                dtype=original_dataset["data"][demo]["next_obs"][obs_key].dtype,
             )
 
     original_dataset.close()
