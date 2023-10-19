@@ -7,13 +7,12 @@ ros:
   additional_topics:
     - "/tf"
     - "/joint_states"
-    - "/kinect_head/depth_registered/image_rect/compressedDepth"
-    - "/kinect_head/rgb/camera_info"
-    - "/eus_imitation/l_arm_state"
+    - "/head_camera/depth_registered/image_rect/compressedDepth"
+    - "/head_camera/rgb/camera_info"
     - "/eus_imitation/r_arm_state"
-    - "/eus_imitation/l_arm_end_coords"
     - "/eus_imitation/r_arm_end_coords"
     - "/eus_imitation/all_robot_state"
+    - "/eus_imitation/object_position"
     - "/spacenav/joy"
     - "/controller_LHR_FD35BD42/joy"
     - "/controller_LHR_F7AFBF47/joy"
@@ -22,7 +21,7 @@ ros:
 
 obs: # input into policy
   head_image:
-    topic_name: "/kinect_head/rgb/image_rect_color/compressed"
+    topic_name: "/head_camera/rgb/image_rect_color/compressed"
     msg_type: "CompressedImage"
     modality: "ImageModality"
     normalize: True
