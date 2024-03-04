@@ -2,6 +2,7 @@
 A collection of utility functions for working with files, such as reading metadata from
 demonstration datasets, loading model checkpoints, or downloading dataset files.
 """
+
 import os
 import re
 from omegaconf import OmegaConf
@@ -73,6 +74,7 @@ def get_normalize_cfg(project_name):
     normalize_cfg = OmegaConf.load(normalize_file)
     return normalize_cfg
 
+
 def update_normlize_cfg(project_name, config):
     normalize_cfg = get_normalize_cfg(project_name)
     if config.actions.normalize:
@@ -84,7 +86,6 @@ def update_normlize_cfg(project_name, config):
             config.obs[obs].max = normalize_cfg.obs[obs].max
     return config
 
-    
 
 def get_latest_runs(project_name, model_type):
     model_dir = get_log_folder(project_name)
@@ -108,6 +109,7 @@ def get_best_runs(project_name, model_type):
         model_file = os.path.join(model_type_dir, model_file)
         print("Best model not found, use the latest model: ", model_file)
         return model_file
+
 
 def print_config(config):
     dict_config = OmegaConf.to_container(config, resolve=True)

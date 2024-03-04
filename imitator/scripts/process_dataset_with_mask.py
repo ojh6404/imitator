@@ -29,6 +29,7 @@ from groundingdino.config import GroundingDINO_SwinT_OGC
 global points
 points = []
 
+
 def get_points(event, x, y, flags, param):
     global points
 
@@ -37,6 +38,7 @@ def get_points(event, x, y, flags, param):
             points.append([x, y])
     except Exception as e:
         print(e)
+
 
 def decompose_mask(template_mask, num_objects):
     """
@@ -49,7 +51,6 @@ def decompose_mask(template_mask, num_objects):
         mask[template_mask == i] = 1
         masks.append(mask)
     return masks
-
 
 
 def compose_mask(masks):
@@ -69,12 +70,13 @@ def compose_mask(masks):
 
     return template_mask
 
+
 def seperate_each_object_from_image(image, mask, num_objects):
     """
     input: image [H, W, C], mask [H, W], num_objects
     output: list of images [H, W, C]
     """
-    masks = decompose_mask(mask, num_objects) # list of [H, W]
+    masks = decompose_mask(mask, num_objects)  # list of [H, W]
     images = []
     for mask in masks:
         masked_image = np.zeros_like(image).astype(np.uint8)
@@ -82,14 +84,16 @@ def seperate_each_object_from_image(image, mask, num_objects):
         images.append(masked_image)
     return images
 
+
 def masking_image(image, mask, background=0):
     # image: [H, W, C]
     # mask: [H, W] with 0, 1, 2, 3, ... N, 0 is background
     # output: [H, W, C]
     masked_image = image.copy()
-    masked_image[mask == 0] = background # background to black
+    masked_image[mask == 0] = background  # background to black
 
     return masked_image
+
 
 def mask_to_bbox(mask, num_objects):
     # mask: [H, W] with 0, 1, 2, 3, ... N, 0 is background
@@ -102,12 +106,13 @@ def mask_to_bbox(mask, num_objects):
         # when there is no mask matching
         if len(y) == 0 or len(x) == 0:
             print("no mask matching")
-            bboxes.append([0, 0, 0, 0]) # dummy bbox
+            bboxes.append([0, 0, 0, 0])  # dummy bbox
         else:
             bboxes.append([x.min(), y.min(), x.max(), y.max()])
     return np.array(bboxes)
 
-def resize_roi_from_bbox(image, bbox, shape=(64,64)):
+
+def resize_roi_from_bbox(image, bbox, shape=(64, 64)):
 
     # bbox: [x1, y1, x2, y2]
     # image: [H, W, C]
@@ -118,10 +123,9 @@ def resize_roi_from_bbox(image, bbox, shape=(64,64)):
     if bbox[0] == 0 and bbox[1] == 0 and bbox[2] == 0 and bbox[3] == 0:
         resized_roi_image = np.zeros((shape[0], shape[1], 3)).astype(np.uint8)
     else:
-        roi_image = image[bbox[1]:bbox[3], bbox[0]:bbox[2], :] # [H, W, C]
-        resized_roi_image = cv2.resize(roi_image, shape) # [C, H, W]
+        roi_image = image[bbox[1] : bbox[3], bbox[0] : bbox[2], :]  # [H, W, C]
+        resized_roi_image = cv2.resize(roi_image, shape)  # [C, H, W]
     return resized_roi_image
-
 
 
 def main(args):
@@ -141,18 +145,23 @@ def main(args):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     print("Processing dataset: {}".format(hdf5_path))
-    dino_config =  os.path.join(perception_pkg_path, "config/GroundingDINO_SwinT_OGC.py")
-    dino_checkpoint = download_checkpoint("dino", os.path.join(perception_pkg_path, "checkpoints"))
+    dino_config = os.path.join(perception_pkg_path, "config/GroundingDINO_SwinT_OGC.py")
+    dino_checkpoint = download_checkpoint(
+        "dino", os.path.join(perception_pkg_path, "checkpoints")
+    )
     grounding_dino = load_model(dino_config, dino_checkpoint, device=device)
 
-    sam_checkpoint = download_checkpoint("sam_hq_vit_h", os.path.join(perception_pkg_path, "checkpoints"))
+    sam_checkpoint = download_checkpoint(
+        "sam_hq_vit_h", os.path.join(perception_pkg_path, "checkpoints")
+    )
     sam = sam_model_registry["vit_h"](checkpoint=sam_checkpoint).to(device)
     predictor = SamPredictor(sam)
 
-    xmem_checkpoint = download_checkpoint("xmem", os.path.join(perception_pkg_path, "checkpoints"))
-    tracker_config =  os.path.join(perception_pkg_path, "config/tracker_config.yaml")
+    xmem_checkpoint = download_checkpoint(
+        "xmem", os.path.join(perception_pkg_path, "checkpoints")
+    )
+    tracker_config = os.path.join(perception_pkg_path, "config/tracker_config.yaml")
     xmem = BaseTracker(xmem_checkpoint, tracker_config, device="cuda:0")
-
 
     original_dataset = h5py.File(hdf5_path, "r")
     processed_dataset = h5py.File(hdf5_path.replace(".hdf5", "_with_mask.hdf5"), "w")
@@ -168,20 +177,27 @@ def main(args):
         mask_group = processed_dataset.create_group("mask")
         for mask_key in original_dataset["mask"].keys():
             print("mask_key: {}".format(mask_key))
-            print("original_dataset[mask_key]: {}".format(original_dataset["mask/{}".format(mask_key)][:]))
+            print(
+                "original_dataset[mask_key]: {}".format(
+                    original_dataset["mask/{}".format(mask_key)][:]
+                )
+            )
 
-            mask_group.create_dataset(mask_key, data=original_dataset["mask/{}".format(mask_key)][:])
+            mask_group.create_dataset(
+                mask_key, data=original_dataset["mask/{}".format(mask_key)][:]
+            )
 
     # concatenate text into one string
     num_objects = len(args.text_prompt)
     text_prompt = ". ".join(args.text_prompt)
     print("text prompt : ", text_prompt)
 
-
     # demos
     for demo in tqdm(original_dataset["data"].keys()):
         demo_group = data_group.create_group(demo)
-        demo_group.attrs["num_samples"] = original_dataset["data"][demo].attrs["num_samples"]
+        demo_group.attrs["num_samples"] = original_dataset["data"][demo].attrs[
+            "num_samples"
+        ]
 
         # copy actions
         demo_group.create_dataset(
@@ -197,7 +213,9 @@ def main(args):
 
             # create mask if obs's modality is ImageModality
             if config.obs[obs_key].modality == "ImageModality":
-                original_images = original_dataset["data"][demo]["obs"][obs_key] # [T, H, W, C]
+                original_images = original_dataset["data"][demo]["obs"][
+                    obs_key
+                ]  # [T, H, W, C]
 
                 predictor.set_image(original_images[0])
 
@@ -206,33 +224,43 @@ def main(args):
                 if args.interactive:
                     # global points
                     print("prompt manually")
-                    prompt_masks = [] # list of mask [H, W]
+                    prompt_masks = []  # list of mask [H, W]
                     prompt_image = original_images[0].copy()
                     while True:
                         cv2.imshow("original", prompt_image)
                         cv2.setMouseCallback("original", get_points)
-                        prompt_image = point_drawer(prompt_image, points, labels=[1] * len(points))
+                        prompt_image = point_drawer(
+                            prompt_image, points, labels=[1] * len(points)
+                        )
                         prompt_points = np.array(deepcopy(points))
                         if len(prompt_points) > 0:
                             masks, scores, logits = predictor.predict(
-                                point_coords= prompt_points,
-                                point_labels= [1] * len(prompt_points),
+                                point_coords=prompt_points,
+                                point_labels=[1] * len(prompt_points),
                                 box=None,
                                 mask_input=None,
                                 multimask_output=False,
-                                )
-                            mask, logit = masks[np.argmax(scores)], logits[np.argmax(scores)] # choose the best mask [H, W]
-                            prompt_image = mask_painter(prompt_image, mask, color_index=len(prompt_masks)+1)
+                            )
+                            mask, logit = (
+                                masks[np.argmax(scores)],
+                                logits[np.argmax(scores)],
+                            )  # choose the best mask [H, W]
+                            prompt_image = mask_painter(
+                                prompt_image, mask, color_index=len(prompt_masks) + 1
+                            )
 
                             # refine mask
                             masks, scores, logits = predictor.predict(
-                                point_coords= prompt_points,
-                                point_labels= [1] * len(prompt_points),
+                                point_coords=prompt_points,
+                                point_labels=[1] * len(prompt_points),
                                 box=None,
-                                mask_input= logit[None, :, :],
+                                mask_input=logit[None, :, :],
                                 multimask_output=False,
                             )
-                            mask, logit = masks[np.argmax(scores)], logits[np.argmax(scores)]
+                            mask, logit = (
+                                masks[np.argmax(scores)],
+                                logits[np.argmax(scores)],
+                            )
 
                         key = cv2.waitKey(1)
                         if key == ord("p"):
@@ -260,7 +288,7 @@ def main(args):
                         text_prompt=text_prompt,
                         box_threshold=args.box_threshold,
                         text_threshold=args.text_threshold,
-                        )
+                    )
 
                     ordered_bboxes = []
                     for txt in args.text_prompt:
@@ -269,12 +297,13 @@ def main(args):
                                 ordered_bboxes.append(bboxes[i])
                                 break
 
-
                     if len(phrases) == len(args.text_prompt):
-                        bboxes_tensor = torch.Tensor(ordered_bboxes).to(device) # [N, 4]
+                        bboxes_tensor = torch.Tensor(ordered_bboxes).to(
+                            device
+                        )  # [N, 4]
                         transformed_bboxes = predictor.transform.apply_boxes_torch(
                             bboxes_tensor, original_images.shape[:2]
-                        ) # [N, 4]
+                        )  # [N, 4]
 
                         with torch.no_grad():
                             first_masks, scores, logits = predictor.predict_torch(
@@ -282,38 +311,50 @@ def main(args):
                                 point_labels=None,
                                 boxes=transformed_bboxes,
                                 multimask_output=False,
-                                )
-                        first_masks = first_masks.cpu().squeeze(1).numpy() # [N, H, W]
+                            )
+                        first_masks = first_masks.cpu().squeeze(1).numpy()  # [N, H, W]
                     else:
                         # global points
                         print("prompt manually")
-                        prompt_masks = [] # list of mask [H, W]
+                        prompt_masks = []  # list of mask [H, W]
                         prompt_image = original_images[0].copy()
                         while True:
                             cv2.imshow("original", prompt_image)
                             cv2.setMouseCallback("original", get_points)
-                            prompt_image = point_drawer(prompt_image, points, labels=[1] * len(points))
+                            prompt_image = point_drawer(
+                                prompt_image, points, labels=[1] * len(points)
+                            )
                             prompt_points = np.array(deepcopy(points))
                             if len(prompt_points) > 0:
                                 masks, scores, logits = predictor.predict(
-                                    point_coords= prompt_points,
-                                    point_labels= [1] * len(prompt_points),
+                                    point_coords=prompt_points,
+                                    point_labels=[1] * len(prompt_points),
                                     box=None,
                                     mask_input=None,
                                     multimask_output=False,
-                                    )
-                                mask, logit = masks[np.argmax(scores)], logits[np.argmax(scores)] # choose the best mask [H, W]
-                                prompt_image = mask_painter(prompt_image, mask, color_index=len(prompt_masks)+1)
+                                )
+                                mask, logit = (
+                                    masks[np.argmax(scores)],
+                                    logits[np.argmax(scores)],
+                                )  # choose the best mask [H, W]
+                                prompt_image = mask_painter(
+                                    prompt_image,
+                                    mask,
+                                    color_index=len(prompt_masks) + 1,
+                                )
 
                                 # refine mask
                                 masks, scores, logits = predictor.predict(
-                                    point_coords= prompt_points,
-                                    point_labels= [1] * len(prompt_points),
+                                    point_coords=prompt_points,
+                                    point_labels=[1] * len(prompt_points),
                                     box=None,
-                                    mask_input= logit[None, :, :],
+                                    mask_input=logit[None, :, :],
                                     multimask_output=False,
                                 )
-                                mask, logit = masks[np.argmax(scores)], logits[np.argmax(scores)]
+                                mask, logit = (
+                                    masks[np.argmax(scores)],
+                                    logits[np.argmax(scores)],
+                                )
 
                             key = cv2.waitKey(1)
                             if key == ord("p"):
@@ -330,12 +371,16 @@ def main(args):
                                 points = []
                                 cv2.destroyAllWindows()
                                 break
-                template_mask = compose_mask(first_masks) # [H, W] with 0, 1, 2, 3, ... N, 0 is background
-                masks = [] # [T, H, W]
+                template_mask = compose_mask(
+                    first_masks
+                )  # [H, W] with 0, 1, 2, 3, ... N, 0 is background
+                masks = []  # [T, H, W]
 
                 for i, original_image in enumerate(original_images):
                     if i == 0:
-                        template_mask, logit = xmem.track(frame=original_image, first_frame_annotation=template_mask)
+                        template_mask, logit = xmem.track(
+                            frame=original_image, first_frame_annotation=template_mask
+                        )
                     else:
                         template_mask, logit = xmem.track(frame=original_image)
                     masks.append(template_mask)
@@ -345,11 +390,15 @@ def main(args):
                         debug_image = np.zeros(original_image.shape, dtype=np.uint8)
                         # draw mask 1==R, 2==G, 3==B
                         for n in range(3):
-                            debug_image[:, :, n] = (template_mask == (n+1)).astype(np.uint8) * 255
-                        cv2.imshow("debug", cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR))
+                            debug_image[:, :, n] = (template_mask == (n + 1)).astype(
+                                np.uint8
+                            ) * 255
+                        cv2.imshow(
+                            "debug", cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR)
+                        )
                         cv2.waitKey(1)
                 xmem.clear_memory()
-                masks = np.stack(masks, axis=0) # [T, H, W]
+                masks = np.stack(masks, axis=0)  # [T, H, W]
 
                 # save mask
                 obs_group.create_dataset(
@@ -363,9 +412,11 @@ def main(args):
                     dtype=masks.dtype,
                 )
 
-                rgb_mask = np.zeros((masks.shape[0], masks.shape[1], masks.shape[2], 3), dtype=np.uint8)
+                rgb_mask = np.zeros(
+                    (masks.shape[0], masks.shape[1], masks.shape[2], 3), dtype=np.uint8
+                )
                 for n in range(3):
-                    rgb_mask[:, :, :, n] = (masks == (n+1)).astype(np.uint8) * 255
+                    rgb_mask[:, :, :, n] = (masks == (n + 1)).astype(np.uint8) * 255
 
                 # save rgb mask
                 obs_group.create_dataset(

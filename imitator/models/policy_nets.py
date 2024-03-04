@@ -209,8 +209,8 @@ class MLPActor(Actor):
         self,
         batch: Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor]]],
     ) -> torch.Tensor:
-        obs_latents = self.nets["obs_encoder"](batch["obs"]) # [B, T, D]
-        mlp_decoder_outputs = self.nets["mlp_decoder"](obs_latents) # [B, T, D]
+        obs_latents = self.nets["obs_encoder"](batch["obs"])  # [B, T, D]
+        mlp_decoder_outputs = self.nets["mlp_decoder"](obs_latents)  # [B, T, D]
         actions = batch.get("actions", None)
         outputs = self.mlp_decoder_postprocess(mlp_decoder_outputs, actions)
         return outputs
@@ -225,9 +225,9 @@ class MLPActor(Actor):
         self,
         batch: Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor]]],
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch = TensorUtils.to_sequence(batch) # [B, 1, D]
-        actions = self.forward(batch)["predictions"] # [B, D]
-        actions = TensorUtils.squeeze(actions, 1) # [B, D]
+        batch = TensorUtils.to_sequence(batch)  # [B, 1, D]
+        actions = self.forward(batch)["predictions"]  # [B, D]
+        actions = TensorUtils.squeeze(actions, 1)  # [B, D]
         actions = self.action_modality.unprocess_obs(actions)  # numpy ndarray
         return actions
 
@@ -438,7 +438,7 @@ class TransformerActor(Actor):
         self,
         batch: Dict[str, Union[torch.Tensor, Dict[str, torch.Tensor]]],
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        actions = self.forward(batch)["predictions"] # [B, T, D]
+        actions = self.forward(batch)["predictions"]  # [B, T, D]
         actions = self.action_modality.unprocess_obs(actions)  # numpy ndarray
         if self.supervise_all_steps:  # get last timestep
             actions = actions[:, -1, :]

@@ -26,7 +26,6 @@ except ImportError:
     print("robosuite cannot be imported")
 
 
-
 yaml.add_representer(
     OrderedDict,
     lambda dumper, data: dumper.represent_mapping(
@@ -140,20 +139,17 @@ class RolloutBase(ABC):
         self.stacked_obs = stacked_obs
         return stacked_obs
 
-
-
     def process_obs(self, obs: Dict[str, Any]) -> Dict[str, Any]:
         if self.actor_type == TransformerActor:
             obs = self.frame_stack(obs)
         return obs
-
 
     def rollout(self, obs: Dict[str, Any]) -> None:
         batch = dict()
         obs = self.process_obs(obs)
         obs = TensorUtils.to_batch(obs)  # [1, D], if TransformerActor, [1, T, D]
         batch["obs"] = obs
-        batch["actions"] = None # for dummy
+        batch["actions"] = None  # for dummy
         if self.actor_type == RNNActor:
             if self.running_cnt % self.rnn_horizon == 0:
                 self.rnn_state = self.model.get_rnn_init_state(
@@ -195,7 +191,9 @@ class RolloutBase(ABC):
     @torch.no_grad()
     def render(self, obs: Dict[str, Any]) -> None:
         # input : obs dict of numpy ndarray [1, H, W, C]
-        if self.actor_type == TransformerActor: # obs is stacked if transformer like [1, T, D]
+        if (
+            self.actor_type == TransformerActor
+        ):  # obs is stacked if transformer like [1, T, D]
             # so we need to use last time step obs to render
             obs = {k: v[:, -1, :] for k, v in obs.items()}
 
@@ -226,6 +224,7 @@ class RobosuiteRollout(RolloutBase):
     def __init__(self, cfg: Dict[str, Any]) -> None:
         super(RobosuiteRollout, self).__init__(cfg)
         import robosuite
+
         self.env_meta = get_env_meta_from_dataset(cfg.dataset_path)
         self.env = create_env_from_env_meta(self.env_meta, render=True)
 
@@ -243,7 +242,7 @@ class RobosuiteRollout(RolloutBase):
             )
 
     def process_obs(self, obs: Dict[str, Any]) -> Dict[str, Any]:
-        processed_obs = obs # dict of numpy ndarray [D]
+        processed_obs = obs  # dict of numpy ndarray [D]
         # rename object-state to object
         processed_obs["object"] = obs["object-state"]
         processed_obs.pop("object-state")

@@ -3,6 +3,7 @@
 import h5py
 import argparse
 
+
 def main(args):
 
     f = h5py.File(args.dataset, "r")
@@ -26,11 +27,7 @@ def main(args):
         print(cnt)
         cnt += 1
 
-
-
     f.close()
-
-
 
 
 if __name__ == "__main__":

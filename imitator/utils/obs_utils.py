@@ -16,6 +16,7 @@ from torchvision import transforms as T
 
 from typing import Union, List, Tuple, Dict
 
+
 # fucntion that get mean and std from max and min
 def get_normalize_params(min_val, max_val):
     min_array = np.array(min_val).astype(np.float32)
@@ -54,11 +55,13 @@ def concatenate_image(
     image = np.concatenate([image1, image2], axis=1)
     return image
 
+
 class AddGaussianNoise(object):
     """
     Input is (B, C, H, W) or  (C, H, W) [0, 1] float tensor
     """
-    def __init__(self, mean=0., std=1.0, p=0.5):
+
+    def __init__(self, mean=0.0, std=1.0, p=0.5):
         self.std = std
         self.mean = mean
         self.p = p
@@ -66,20 +69,28 @@ class AddGaussianNoise(object):
     def __call__(self, tensor):
         if torch.rand(1) < self.p:
             # tensor = tensor + torch.randn(tensor.size()) * self.std + self.mean
-            tensor = tensor + torch.randn(tensor.size()).to(tensor.device) * self.std + self.mean
+            tensor = (
+                tensor
+                + torch.randn(tensor.size()).to(tensor.device) * self.std
+                + self.mean
+            )
             # # clip to [0, 1]
-            tensor = torch.clamp(tensor, 0., 1.)
+            tensor = torch.clamp(tensor, 0.0, 1.0)
             return tensor
 
         return tensor
 
     def __repr__(self):
-        return self.__class__.__name__ + '(mean={0}, std={1}, p={2})'.format(self.mean, self.std, self.p)
+        return self.__class__.__name__ + "(mean={0}, std={1}, p={2})".format(
+            self.mean, self.std, self.p
+        )
+
 
 class RGBShifter(object):
     """
     Input is (B, C, H, W) or  (C, H, W) [0, 1] float tensor
     """
+
     def __init__(self, r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=0.5):
         self.r_shift_limit = r_shift_limit
         self.g_shift_limit = g_shift_limit
@@ -89,7 +100,7 @@ class RGBShifter(object):
     def __call__(self, tensor):
         # tensor : [B, C, H, W] or [C, H, W]
         if torch.rand(1) < self.p:
-            r_shift = torch.rand(1) * self.r_shift_limit * 2 - self.r_shift_limit #
+            r_shift = torch.rand(1) * self.r_shift_limit * 2 - self.r_shift_limit  #
             g_shift = torch.rand(1) * self.g_shift_limit * 2 - self.g_shift_limit
             b_shift = torch.rand(1) * self.b_shift_limit * 2 - self.b_shift_limit
             if tensor.ndim == 4:
@@ -103,11 +114,16 @@ class RGBShifter(object):
             else:
                 raise NotImplementedError
             # clip to [0, 1]
-            tensor = torch.clamp(tensor, 0., 1.)
+            tensor = torch.clamp(tensor, 0.0, 1.0)
         return tensor
 
     def __repr__(self):
-        return self.__class__.__name__ + '(r_shift_limit={0}, g_shift_limit={1}, b_shift_limit={2}, p={3})'.format(self.r_shift_limit, self.g_shift_limit, self.b_shift_limit, self.p)
+        return (
+            self.__class__.__name__
+            + "(r_shift_limit={0}, g_shift_limit={1}, b_shift_limit={2}, p={3})".format(
+                self.r_shift_limit, self.g_shift_limit, self.b_shift_limit, self.p
+            )
+        )
 
 
 class Modality(ABC, nn.Module):
@@ -269,7 +285,7 @@ class ImageModalityEncoder(ModalityEncoderBase):
     def __init__(self, cfg: Dict, obs_name: str) -> None:
         self.cfg = cfg
 
-        self.normalize =  cfg.normalize
+        self.normalize = cfg.normalize
         self.data_augmentation = cfg.data_augmentation
         self.input_dim = cfg.obs_encoder.input_dim
         self.output_dim = cfg.obs_encoder.output_dim
@@ -302,7 +318,7 @@ class ImageModalityEncoder(ModalityEncoderBase):
             ),
         )
 
-        if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]: # TODO
+        if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:  # TODO
             self.model = eval(self.encoder_model)(
                 input_size=cfg.obs_encoder.input_dim[:2],
                 input_channel=cfg.obs_encoder.input_dim[2],

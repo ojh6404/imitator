@@ -41,6 +41,7 @@ def verify(model, dataset, seed=None):
 @torch.no_grad()
 def verify_image(model, dataset, obs_key="image", noise=False):
     import torchvision.transforms as T
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.eval()

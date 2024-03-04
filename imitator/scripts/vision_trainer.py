@@ -36,7 +36,9 @@ def validate(model, dataloader, obs_key, obs_dim, data_augmentation=False):
         ground_truth = batch_image.detach().clone()
         if data_augmentation:
             batch_image = transform(batch_image).contiguous()
-        valid_info = model.forward_train({"obs": batch_image, "ground_truth": ground_truth})
+        valid_info = model.forward_train(
+            {"obs": batch_image, "ground_truth": ground_truth}
+        )
         _valid_loss = valid_info["loss"]
         valid_loss += _valid_loss.item()
     valid_loss /= len(dataloader.dataset)
@@ -158,8 +160,8 @@ def main(args):
             # data loader ran out of batches - reset and yield first batch
             train_dataloader_iter = iter(train_dataloader)
             batch = next(train_dataloader_iter)
-        batch = TensorUtils.to_device(batch["obs"][obs_key], device) # [B, 1, H, W, C]
-        batch = TensorUtils.squeeze(batch, 1) # [B, H, W, C]
+        batch = TensorUtils.to_device(batch["obs"][obs_key], device)  # [B, 1, H, W, C]
+        batch = TensorUtils.squeeze(batch, 1)  # [B, H, W, C]
         batch_image = batch.permute(0, 3, 1, 2)  # (B, C, H, W)
         batch_image = batch_image.contiguous().float() / 255.0
         if data_augmentation:

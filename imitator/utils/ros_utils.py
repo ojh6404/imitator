@@ -32,17 +32,17 @@ def get_rosbag_files(record_dir):
     rosbag_files = sort_names_by_number(rosbag_files)
     return rosbag_files
 
+
 def get_rosbag_full_paths(record_dir, rosbag_files):
     rosbag_full_paths = []
     for rosbag_file in rosbag_files:
         rosbag_full_paths.append(os.path.join(record_dir, rosbag_file))
     return rosbag_full_paths
 
+
 def get_rosbag_abs_paths(record_dir):
     rosbag_files = get_rosbag_files(record_dir)
     rosbag_abs_paths = []
     for rosbag_file in rosbag_files:
-        rosbag_abs_paths.append(
-            os.path.abspath(os.path.join(record_dir, rosbag_file))
-        )
+        rosbag_abs_paths.append(os.path.abspath(os.path.join(record_dir, rosbag_file)))
     return rosbag_abs_paths

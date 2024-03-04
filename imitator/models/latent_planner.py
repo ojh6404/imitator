@@ -21,17 +21,17 @@ class LatentPlanner(nn.Module):
         super(LatentPlanner, self).__init__()
 
         self.goal_image_encoder = Resnet(
-            input_size = [224, 224],
-            input_channel = 3,
-            resnet_type= "resnet18",  # resnet18, resnet34, resnet50, resnet101, resnet152
+            input_size=[224, 224],
+            input_channel=3,
+            resnet_type="resnet18",  # resnet18, resnet34, resnet50, resnet101, resnet152
             pool=None,
             latent_dim=64,
         )
 
         self.current_image_encoder = Resnet(
-            input_size = [224, 224],
-            input_channel = 3,
-            resnet_type= "resnet18",  # resnet18, resnet34, resnet50, resnet101, resnet152
+            input_size=[224, 224],
+            input_channel=3,
+            resnet_type="resnet18",  # resnet18, resnet34, resnet50, resnet101, resnet152
             pool=None,
             latent_dim=64,
         )
@@ -46,7 +46,6 @@ class LatentPlanner(nn.Module):
             nn.ReLU(),
             nn.Linear(400, self.horizon * self.dim),
         )
-
 
     def forward(self, goal_image, current_image, hand_xy):
         # goal_image: [B, 3, 224, 224]

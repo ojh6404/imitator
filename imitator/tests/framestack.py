@@ -10,6 +10,7 @@ import cv2
 import torch
 import numpy as np
 
+
 def main(args):
 
     datasets = ImageDataset(
@@ -17,8 +18,7 @@ def main(args):
         obs_keys=["image"],
         hdf5_cache_mode=True,
         hdf5_use_swmr=True,
-        )
-
+    )
 
     data = datasets[0]
 
@@ -50,12 +50,10 @@ def main(args):
             cv2.waitKey(0)
 
 
-
-
-if __name__=="__main__":
+if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d","--dataset", type=str, default=None)
+    parser.add_argument("-d", "--dataset", type=str, default=None)
     args = parser.parse_args()
 
     main(args)

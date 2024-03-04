@@ -12,9 +12,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="imitator",
-    packages=[
-        package for package in find_packages() if package.startswith("imitator")
-    ],
+    packages=[package for package in find_packages() if package.startswith("imitator")],
     install_requires=[
         "numpy",
         "opencv-python",
@@ -32,9 +30,9 @@ setup(
         "einops",
         "omegaconf",
     ],
-    eager_resources=['*'],
+    eager_resources=["*"],
     include_package_data=True,
-    python_requires='>=3',
+    python_requires=">=3",
     description="imitator: Imitation learning library for robotics",
     author="Jihoon Oh",
     url="https://github.com/ojh6404/imitator",

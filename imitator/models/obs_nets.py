@@ -169,9 +169,9 @@ class ConvEncoder(VisionModule):
                 layer_dims=[latent_dim * 4, latent_dim * 2],
                 activation=activation,
                 dropouts=None,
-                normalization=nn.BatchNorm1d
-                if normalization is not None
-                else normalization,
+                normalization=(
+                    nn.BatchNorm1d if normalization is not None else normalization
+                ),
             )
             self.nets["mlp_logvar"] = MLP(
                 input_dim=channels[-1] * output_conv_size[0] * output_conv_size[1],
@@ -179,9 +179,9 @@ class ConvEncoder(VisionModule):
                 layer_dims=[latent_dim * 4, latent_dim * 2],
                 activation=activation,
                 dropouts=None,
-                normalization=nn.BatchNorm1d
-                if normalization is not None
-                else normalization,
+                normalization=(
+                    nn.BatchNorm1d if normalization is not None else normalization
+                ),
             )
         else:
             self.nets["mlp"] = MLP(
@@ -190,9 +190,9 @@ class ConvEncoder(VisionModule):
                 layer_dims=[latent_dim * 4, latent_dim * 2],
                 activation=activation,
                 dropouts=None,
-                normalization=nn.BatchNorm1d
-                if normalization is not None
-                else normalization,
+                normalization=(
+                    nn.BatchNorm1d if normalization is not None else normalization
+                ),
             )
 
     def reparametrize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
@@ -242,9 +242,9 @@ class ConvDecoder(VisionModule):
             layer_dims=[latent_dim * 2, latent_dim * 4],
             activation=activation,
             dropouts=None,
-            normalization=nn.BatchNorm1d
-            if normalization is not None
-            else normalization,
+            normalization=(
+                nn.BatchNorm1d if normalization is not None else normalization
+            ),
         )
         self.nets["reshape"] = Reshape(
             (-1, channels[0], input_conv_size[0], input_conv_size[1])
@@ -430,9 +430,7 @@ class VariationalAutoEncoder(VisionModule):
         x = self.nets["decoder"](z)
         return x, z
 
-    def forward_train(
-        self, batch: Dict[str, torch.Tensor]
-    ) -> Dict[str, torch.Tensor]:
+    def forward_train(self, batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         outputs = OrderedDict()
         x = batch["obs"]
         ground_truth = batch["ground_truth"]
@@ -682,7 +680,7 @@ class Resnet(VisionModule):
         resnet_type: str = "resnet18",  # resnet18, resnet34, resnet50, resnet101, resnet152
         input_coord_conv: bool = False,
         pretrained: bool = False,
-        pool: Optional[str] = "SpatialSoftmax", # TODO seperate it from resnet
+        pool: Optional[str] = "SpatialSoftmax",  # TODO seperate it from resnet
         latent_dim: Optional[int] = None,
         pool_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs,

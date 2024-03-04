@@ -58,15 +58,15 @@ def main(args):
         dataset_keys=["actions"],
         load_next_obs=True,
         frame_stack=1,
-        pad_frame_stack= True,
-        pad_seq_length= True,
-        get_pad_mask= False,
+        pad_frame_stack=True,
+        pad_seq_length=True,
+        get_pad_mask=False,
         # hdf5_cache_mode="all",
         hdf5_cache_mode=None,
         hdf5_use_swmr=True,
         obs_keys=obs_keys,  # observations we want to appear in batches
         seq_length=seq_len,
-        goal_mode="last"
+        goal_mode="last",
     )
     data_loader = DataLoader(
         dataset=dataset,
@@ -123,9 +123,7 @@ def main(args):
 
     MEAN = [0.485, 0.456, 0.406]
     STD = [0.229, 0.224, 0.225]
-    transform = T.Compose([
-        T.Normalize(mean=MEAN, std=STD)
-    ])
+    transform = T.Compose([T.Normalize(mean=MEAN, std=STD)])
 
     for epoch in range(1, num_epochs + 1):  # epoch numbers start at 1
         # data_loader_iter = iter(data_loader)
@@ -138,25 +136,25 @@ def main(args):
             batch = next(data_loader_iter)
         batch = TensorUtils.to_float(TensorUtils.to_device(batch, device))
 
-
         # print(batch["obs"]["image"].shape)
-        goal_image = batch["goal_obs"]["image"] # [B,H,W,C]
-        goal_image = goal_image.permute(0,3,1,2).contiguous() / 255.0 # [B,C,H,W]
-        goal_image = transform(goal_image) # Normalized [B,C,H,W]
+        goal_image = batch["goal_obs"]["image"]  # [B,H,W,C]
+        goal_image = goal_image.permute(0, 3, 1, 2).contiguous() / 255.0  # [B,C,H,W]
+        goal_image = transform(goal_image)  # Normalized [B,C,H,W]
 
-        current_image = batch["obs"]["image"][:,0,:,:,:] # [B,H,W,C]
-        current_image = current_image.permute(0,3,1,2).contiguous() / 255.0 # [B,C,H,W]
-        current_image = transform(current_image) # Normalized [B,C,H,W]
+        current_image = batch["obs"]["image"][:, 0, :, :, :]  # [B,H,W,C]
+        current_image = (
+            current_image.permute(0, 3, 1, 2).contiguous() / 255.0
+        )  # [B,C,H,W]
+        current_image = transform(current_image)  # Normalized [B,C,H,W]
 
-
-        trajectory = batch["actions"] # [B,T,D]
-        first_action = trajectory[:,0,:] # [B,D]
-        first_action = action_normalizer(first_action) # [B,D]
-        groundtruth_action = action_normalizer(trajectory) # [B,T,D]
+        trajectory = batch["actions"]  # [B,T,D]
+        first_action = trajectory[:, 0, :]  # [B,D]
+        first_action = action_normalizer(first_action)  # [B,D]
+        groundtruth_action = action_normalizer(trajectory)  # [B,T,D]
 
         # calculate time and loss
         start_time = time.time()
-        prediction = model(goal_image , current_image, first_action)
+        prediction = model(goal_image, current_image, first_action)
         end_time = time.time()
 
         loss = nn.MSELoss()(prediction, groundtruth_action)
@@ -197,51 +195,48 @@ def main(args):
 
     action_unnormalizer = Unnormalize(mean=action_mean, std=action_std).to(device)
 
-    random_data = dataset[0] # not batch, numpy array
+    random_data = dataset[0]  # not batch, numpy array
 
-    goal_image = random_data["goal_obs"]["image"] # [H,W,C]
-    goal_image = goal_image.transpose(2,0,1) / 255.0 # [C,H,W]
-    goal_image = TensorUtils.to_tensor(goal_image).unsqueeze(0).to(device) # [1,C,H,W]
-    goal_image = transform(goal_image) # Normalized [1,C,H,W]
+    goal_image = random_data["goal_obs"]["image"]  # [H,W,C]
+    goal_image = goal_image.transpose(2, 0, 1) / 255.0  # [C,H,W]
+    goal_image = TensorUtils.to_tensor(goal_image).unsqueeze(0).to(device)  # [1,C,H,W]
+    goal_image = transform(goal_image)  # Normalized [1,C,H,W]
     goal_image = TensorUtils.to_float(goal_image)
 
-    current_image = random_data["obs"]["image"][0,:,:,:] # [H,W,C]
-    current_image = current_image.transpose(2,0,1) / 255.0 # [C,H,W]
-    current_image = TensorUtils.to_tensor(current_image).unsqueeze(0).to(device) # [1,C,H,W]
-    current_image = transform(current_image) # Normalized [1,C,H,W]
+    current_image = random_data["obs"]["image"][0, :, :, :]  # [H,W,C]
+    current_image = current_image.transpose(2, 0, 1) / 255.0  # [C,H,W]
+    current_image = (
+        TensorUtils.to_tensor(current_image).unsqueeze(0).to(device)
+    )  # [1,C,H,W]
+    current_image = transform(current_image)  # Normalized [1,C,H,W]
     current_image = TensorUtils.to_float(current_image)
 
-    first_action = random_data["actions"][0,:] # [D]
-    first_action = TensorUtils.to_tensor(first_action).unsqueeze(0).to(device) # [1,D]
-    first_action = action_normalizer(first_action) # [1,D]
+    first_action = random_data["actions"][0, :]  # [D]
+    first_action = TensorUtils.to_tensor(first_action).unsqueeze(0).to(device)  # [1,D]
+    first_action = action_normalizer(first_action)  # [1,D]
 
-
-
-    prediction = model(goal_image , current_image, first_action) # [1,T,D]
-    prediction = action_unnormalizer(prediction) # [1,T,D]
-    prediction = prediction.squeeze(0).cpu().detach().numpy() # [T,D]
+    prediction = model(goal_image, current_image, first_action)  # [1,T,D]
+    prediction = action_unnormalizer(prediction)  # [1,T,D]
+    prediction = prediction.squeeze(0).cpu().detach().numpy()  # [T,D]
 
     # predicted action is actually xy point in image, so plot it to current image
-    current_image = random_data["obs"]["image"][0,:,:,:] # [H,W,C]
+    current_image = random_data["obs"]["image"][0, :, :, :]  # [H,W,C]
     # draw circle on image
     for i in range(prediction.shape[0]):
-        x = int(prediction[i,0])
-        y = int(prediction[i,1])
+        x = int(prediction[i, 0])
+        y = int(prediction[i, 1])
         # draw circle with timestep wise color
         # first timestep is red, last timestep is blue
-        current_image = cv2.circle(current_image, (x,y), 2, (i*255//prediction.shape[0],0,0), -1)
+        current_image = cv2.circle(
+            current_image, (x, y), 2, (i * 255 // prediction.shape[0], 0, 0), -1
+        )
         # current_image = cv2.circle(current_image, (x,y), 2, (0,0,i*255//prediction.shape[0]), -1)
         # current_image = cv2.circle(current_image, (x,y), 2, (0,0,255), -1)
 
     cv2.imshow("current_image", current_image)
     cv2.waitKey(0)
 
-
-
-
-
     # test model
-
 
     del dataset
 

@@ -20,6 +20,7 @@ from imitator.utils.obs_utils import concatenate_image, AddGaussianNoise, RGBShi
 
 from torchvision import transforms as T
 
+
 # verify model
 @torch.no_grad()
 def verify(model, dataset, obs_key="image"):
@@ -34,16 +35,31 @@ def verify(model, dataset, obs_key="image"):
             AddGaussianNoise(mean=0.0, std=0.1, p=1.0),
             # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
             RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=1.0),
-            T.RandomApply([T.RandomResizedCrop(size=test_image.shape[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=1.0),
+            T.RandomApply(
+                [
+                    T.RandomResizedCrop(
+                        size=test_image.shape[:2],
+                        scale=(0.8, 1.0),
+                        ratio=(0.8, 1.2),
+                        antialias=True,
+                    )
+                ],
+                p=1.0,
+            ),
             # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
         ]
     )
 
-
-    test_image_tensor =  TensorUtils.to_float(TensorUtils.to_device(TensorUtils.to_tensor(test_image), device))
-    test_image_tensor = test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2).contiguous() / 255.0 # (1, C, H, W)
+    test_image_tensor = TensorUtils.to_float(
+        TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
+    )
+    test_image_tensor = (
+        test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2).contiguous() / 255.0
+    )  # (1, C, H, W)
     test_image_tensor = transform(test_image_tensor)
-    test_image = (test_image_tensor.detach().cpu().squeeze(0).permute(1, 2, 0).numpy() * 255.0).astype(np.uint8)
+    test_image = (
+        test_image_tensor.detach().cpu().squeeze(0).permute(1, 2, 0).numpy() * 255.0
+    ).astype(np.uint8)
 
     if args.model == "ae":
         x, z = model(test_image_tensor)
@@ -61,7 +77,6 @@ def verify(model, dataset, obs_key="image"):
     cv2.destroyAllWindows()
 
 
-
 def main(args):
     device = torch.device(args.device)
     hdf5_path = (
@@ -73,7 +88,6 @@ def main(args):
     )
     obs_key = args.obs_key
     config = FileUtils.get_config_from_project_name(args.project_name)
-
 
     if config.obs[obs_key].obs_encoder.model_path is None:
         config.obs[obs_key].obs_encoder.model_path = os.path.join(
@@ -87,14 +101,25 @@ def main(args):
             [
                 AddGaussianNoise(mean=0.0, std=0.1, p=0.5),
                 # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
-                RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=0.5),
-               # T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5),
+                RGBShifter(
+                    r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=0.5
+                ),
+                # T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5),
                 # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
             ]
         )
 
-    random_resize_crop = T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5)
-
+    random_resize_crop = T.RandomApply(
+        [
+            T.RandomResizedCrop(
+                size=config.obs[obs_key].obs_encoder.input_dim[:2],
+                scale=(0.8, 1.0),
+                ratio=(0.8, 1.2),
+                antialias=True,
+            )
+        ],
+        p=0.5,
+    )
 
     dataset = ImageDataset(
         hdf5_path=hdf5_path,
@@ -173,14 +198,15 @@ def main(args):
             data_loader_iter = iter(data_loader)
             batch = next(data_loader_iter)
 
-        batch_image = TensorUtils.to_device(batch["obs"][obs_key], device) # (B, H, W, C)
+        batch_image = TensorUtils.to_device(
+            batch["obs"][obs_key], device
+        )  # (B, H, W, C)
         batch_image = batch_image.permute(0, 3, 1, 2)  # (B, C, H, W)
         batch_image = batch_image.contiguous().float() / 255.0
         batch_image = random_resize_crop(batch_image)
         ground_truth = batch_image.detach().clone()
         if config.obs[obs_key].data_augmentation:
             batch_image = transform(batch_image).contiguous()
-
 
         loss_sum = 0
         loss_dict = model.loss(x=batch_image, ground_truth=ground_truth)
@@ -223,8 +249,9 @@ def main(args):
             )
             # save in models dir
             os.makedirs(
-                os.path.dirname(config.obs[obs_key].obs_encoder.model_path), exist_ok=True
-                )
+                os.path.dirname(config.obs[obs_key].obs_encoder.model_path),
+                exist_ok=True,
+            )
             # get files dir
             torch.save(
                 model.state_dict(),
