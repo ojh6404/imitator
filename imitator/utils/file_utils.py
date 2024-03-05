@@ -55,6 +55,10 @@ def get_config_folder(project_name):
     config_dir = os.path.join(project_dir, "config")
     return config_dir
 
+def get_data_folder(project_name):
+    project_dir = get_project_folder(project_name)
+    data_dir = os.path.join(project_dir, "data")
+    return data_dir
 
 def get_config_file(project_name):
     config_dir = get_config_folder(project_name)
