@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 import os
-import argparse
 import time
 
+from absl import app, flags, logging
 import numpy as np
 import torch
 import torch.optim as optim
@@ -14,31 +14,45 @@ import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
 import imitator.utils.train_utils as TrainUtils
 
+FLAGS = flags.FLAGS
+flags.DEFINE_string("project_name", None, "Name of the project to load config from.")
+flags.DEFINE_string("dataset", None, "Path to dataset, in HDF5 format.")
+flags.DEFINE_integer("batch_size", 128, "Batch size for finetuning.")
+flags.DEFINE_string("device", "cuda", "Device to run training on.")
+flags.DEFINE_integer("num_epochs", 10000, "Number of epochs for finetuning.")
+flags.DEFINE_integer("seed", None, "Seed for reproducibility.")
+flags.DEFINE_string("checkpoint", None, "Path to checkpoint.")
+flags.DEFINE_bool(
+    "verify", False, "Whether to run in verify mode (no training, only validation)."
+)
+flags.DEFINE_bool(
+    "resume", False, "Whether to resume training from the latest checkpoint."
+)
 
-def main(args):
-    config = FileUtils.get_config_from_project_name(args.project_name)
-    config = FileUtils.update_normlize_cfg(args.project_name, config)
+def main(_):
+    config = FileUtils.get_config_from_project_name(FLAGS.project_name)
+    config = FileUtils.update_normlize_cfg(FLAGS.project_name, config)
     print("\n================ Config ================")
     FileUtils.print_config(config)
     print("========================================")
 
-    TrainUtils.set_seed(args.seed)
-    device = torch.device(args.device)
+    TrainUtils.set_seed(FLAGS.seed)
+    device = torch.device(FLAGS.device)
     model_type = config.network.policy.model
     model = eval(model_type)(config).to(device)
 
     train_config = config.network.policy.train
     train_config.batch_size = (
-        args.batch_size if args.batch_size else train_config.batch_size
+        FLAGS.batch_size if FLAGS.batch_size else train_config.batch_size
     )
     train_config.num_epochs = (
-        args.num_epochs if args.num_epochs else train_config.num_epochs
+        FLAGS.num_epochs if FLAGS.num_epochs else train_config.num_epochs
     )
     config.dataset.hdf5_path = (
-        args.dataset
-        if args.dataset
+        FLAGS.dataset
+        if FLAGS.dataset
         else os.path.join(
-            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
+            FileUtils.get_project_folder(FLAGS.project_name), "data/dataset.hdf5"
         )
     )
     train_config.seq_length = (
@@ -56,8 +70,8 @@ def main(args):
     )
 
     print("\n================ Dataset ================")
-    print("Loaded Train Dataset Trajectory Lengths: ", len(train_dataloader.dataset))
-    print("Loaded Valid Dataset Trajectory Lengths: ", len(valid_dataloader.dataset))
+    logging.info("Loaded Train Dataset Trajectory Lengths: ", len(train_dataloader.dataset))
+    logging.info("Loaded Valid Dataset Trajectory Lengths: ", len(valid_dataloader.dataset))
     print("========================================")
 
     print("\n================ Model ================")
@@ -72,12 +86,12 @@ def main(args):
     for image_obs in image_obs_keys:
         if config.obs[image_obs].obs_encoder.model_path is None:
             obs_default_model_path = os.path.join(
-                FileUtils.get_models_folder(args.project_name),
+                FileUtils.get_models_folder(FLAGS.project_name),
                 f"{image_obs}_model.pth",
             )
             if not os.path.exists(obs_default_model_path):
                 if config.obs[image_obs].obs_encoder.trainable:
-                    print("Use pretrained model")
+                    logging.info("Use pretrained model for obs_encoder")
                 else:
                     raise ValueError(
                         f"Model for {image_obs} does not exist. Please specify a model path in config file."
@@ -87,27 +101,27 @@ def main(args):
 
     if config.network.policy.model_path is None:
         default_model_path = os.path.join(
-            FileUtils.get_models_folder(args.project_name),
+            FileUtils.get_models_folder(FLAGS.project_name),
             f"{model_type}_actor_model.pth",
         )
         config.network.policy.model_path = default_model_path
 
     # load checkpoint if provided
-    if args.resume:
-        if args.checkpoint:
-            model.load_state_dict(torch.load(args.checkpoint))
+    if FLAGS.resume:
+        if FLAGS.checkpoint:
+            model.load_state_dict(torch.load(FLAGS.checkpoint))
         else:
             model.load_state_dict(
-                torch.load(FileUtils.get_best_runs(args.project_name, model_type))
+                torch.load(FileUtils.get_best_runs(FLAGS.project_name, model_type))
             )
-    elif args.verify:
-        if args.checkpoint:
-            model.load_state_dict(torch.load(args.checkpoint))
+    elif FLAGS.verify:
+        if FLAGS.checkpoint:
+            model.load_state_dict(torch.load(FLAGS.checkpoint))
         else:
             model.load_state_dict(
-                torch.load(FileUtils.get_best_runs(args.project_name, model_type))
+                torch.load(FileUtils.get_best_runs(FLAGS.project_name, model_type))
             )
-        TrainUtils.verify(model, valid_dataloader.dataset, seed=args.seed)
+        TrainUtils.verify(model, valid_dataloader.dataset, seed=FLAGS.seed)
         return
 
     optimizer = eval("optim." + train_config.get("optimizer", "Adam"))(
@@ -123,11 +137,11 @@ def main(args):
 
     # make dir and tensorboard writer
     os.makedirs(
-        os.path.join(FileUtils.get_project_folder(args.project_name), "runs"),
+        os.path.join(FileUtils.get_project_folder(FLAGS.project_name), "runs"),
         exist_ok=True,
     )
     output_dir = os.path.join(
-        FileUtils.get_project_folder(args.project_name),
+        FileUtils.get_project_folder(FLAGS.project_name),
         "runs",
         model_type + "_" + time.strftime("%Y-%m-%d_%H-%M-%S"),
     )
@@ -163,7 +177,7 @@ def main(args):
         )
 
         logger_dict = {
-            "project_name": args.project_name,
+            "project_name": FLAGS.project_name,
             "model_type": model_type,
             "output_dir": output_dir,
             "model_path": config.network.policy.model_path,
@@ -187,28 +201,10 @@ def main(args):
     # test
     model = actor_type(config).to(device)
     model.load_state_dict(
-        torch.load(FileUtils.get_best_runs(args.project_name, model_type))
+        torch.load(FileUtils.get_best_runs(FLAGS.project_name, model_type))
     )
-    TrainUtils.verify(model, valid_dataloader.dataset, seed=args.seed)
+    TrainUtils.verify(model, valid_dataloader.dataset, seed=FLAGS.seed)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-pn", "--project_name", type=str, required=True, help="project name"
-    )
-    parser.add_argument("-d", "--dataset", type=str, help="path to hdf5 dataset")
-    parser.add_argument("-e", "--num_epochs", type=int, help="num epochs")
-    parser.add_argument("-b", "--batch_size", type=int, help="batch size")
-    parser.add_argument(
-        "-r", "--resume", action="store_true", default=False, help="resume training"
-    )
-    parser.add_argument(
-        "-v", "--verify", action="store_true", default=False, help="verify mode"
-    )
-    parser.add_argument("--device", type=str, default="cuda:0", help="device")
-    parser.add_argument("--seed", type=int, default=None, help="seed")
-    parser.add_argument("-ckpt", "--checkpoint", type=str, help="checkpoint path")
-    args = parser.parse_args()
-
-    main(args)
+    app.run(main)
