@@ -29,6 +29,7 @@ flags.DEFINE_bool(
     "resume", False, "Whether to resume training from the latest checkpoint."
 )
 
+
 def main(_):
     config = FileUtils.get_config_from_project_name(FLAGS.project_name)
     config = FileUtils.update_normlize_cfg(FLAGS.project_name, config)
@@ -70,8 +71,12 @@ def main(_):
     )
 
     print("\n================ Dataset ================")
-    logging.info("Loaded Train Dataset Trajectory Lengths: ", len(train_dataloader.dataset))
-    logging.info("Loaded Valid Dataset Trajectory Lengths: ", len(valid_dataloader.dataset))
+    logging.info(
+        "Loaded Train Dataset Trajectory Lengths: ", len(train_dataloader.dataset)
+    )
+    logging.info(
+        "Loaded Valid Dataset Trajectory Lengths: ", len(valid_dataloader.dataset)
+    )
     print("========================================")
 
     print("\n================ Model ================")
