@@ -38,9 +38,7 @@ def obs_to_modality_dict(config):
     return obs_modality_dict
 
 
-def concatenate_image(
-    image1: Union[np.ndarray, torch.Tensor], image2: Union[np.ndarray, torch.Tensor]
-) -> np.ndarray:
+def concatenate_image(image1: Union[np.ndarray, torch.Tensor], image2: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
     assert image1.ndim == image2.ndim == 3
     if isinstance(image1, torch.Tensor):
         image1 = TensorUtils.to_numpy(image1)
@@ -69,11 +67,7 @@ class AddGaussianNoise(object):
     def __call__(self, tensor):
         if torch.rand(1) < self.p:
             # tensor = tensor + torch.randn(tensor.size()) * self.std + self.mean
-            tensor = (
-                tensor
-                + torch.randn(tensor.size()).to(tensor.device) * self.std
-                + self.mean
-            )
+            tensor = tensor + torch.randn(tensor.size()).to(tensor.device) * self.std + self.mean
             # # clip to [0, 1]
             tensor = torch.clamp(tensor, 0.0, 1.0)
             return tensor
@@ -81,9 +75,7 @@ class AddGaussianNoise(object):
         return tensor
 
     def __repr__(self):
-        return self.__class__.__name__ + "(mean={0}, std={1}, p={2})".format(
-            self.mean, self.std, self.p
-        )
+        return self.__class__.__name__ + "(mean={0}, std={1}, p={2})".format(self.mean, self.std, self.p)
 
 
 class RGBShifter(object):
@@ -118,11 +110,8 @@ class RGBShifter(object):
         return tensor
 
     def __repr__(self):
-        return (
-            self.__class__.__name__
-            + "(r_shift_limit={0}, g_shift_limit={1}, b_shift_limit={2}, p={3})".format(
-                self.r_shift_limit, self.g_shift_limit, self.b_shift_limit, self.p
-            )
+        return self.__class__.__name__ + "(r_shift_limit={0}, g_shift_limit={1}, b_shift_limit={2}, p={3})".format(
+            self.r_shift_limit, self.g_shift_limit, self.b_shift_limit, self.p
         )
 
 
@@ -151,9 +140,7 @@ class Modality(ABC, nn.Module):
         self.unnormalizer = Unnormalize(mean, std)
 
     @abstractmethod
-    def _default_process_obs(
-        self, obs: Union[np.ndarray, torch.Tensor]
-    ) -> torch.Tensor:
+    def _default_process_obs(self, obs: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         return self.normalizer(obs)
 
     @abstractmethod
@@ -194,9 +181,7 @@ class ImageModality(Modality):
         self.width = shape[1]
         self.num_channels = shape[2]
 
-    def _default_process_obs(
-        self, obs: Union[np.ndarray, torch.Tensor]
-    ) -> torch.Tensor:
+    def _default_process_obs(self, obs: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         """
         Images like (B, T, H, W, C) or (B, H, W, C) or (H, W, C) torch tensor or numpy ndarray of uint8.
         Processing obs into a form that can be fed into the encoder like (B*T, C, H, W) or (B, C, H, W) torch tensor of float32.
@@ -243,9 +228,7 @@ class FloatVectorModality(Modality):
         super(FloatVectorModality, self).__init__(name, shape, mean, std)
         assert self.dim == 1
 
-    def _default_process_obs(
-        self, obs: Union[np.ndarray, torch.Tensor]
-    ) -> torch.Tensor:
+    def _default_process_obs(self, obs: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         """
         Vector like (B, T, D) or (B, D) or (D) torch tensor or numpy ndarray of float.
         Processing obs into a form that can be fed into the encoder like (B*T, D) or (B, D) torch tensor of float32.
@@ -273,9 +256,7 @@ class FloatVectorModality(Modality):
 
 class ModalityEncoderBase(nn.Module):
     # pass
-    def __init__(
-        self, obs_name: str, modality: Union[ImageModality, FloatVectorModality]
-    ) -> None:
+    def __init__(self, obs_name: str, modality: Union[ImageModality, FloatVectorModality]) -> None:
         super(ModalityEncoderBase, self).__init__()
         self.obs_name = obs_name
         self.modality = modality
@@ -313,9 +294,7 @@ class ImageModalityEncoder(ModalityEncoderBase):
         # TODO
         super(ImageModalityEncoder, self).__init__(
             obs_name=obs_name,
-            modality=ImageModality(
-                name=obs_name, shape=self.input_dim, mean=mean, std=std
-            ),
+            modality=ImageModality(name=obs_name, shape=self.input_dim, mean=mean, std=std),
         )
 
         if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:  # TODO
@@ -333,9 +312,7 @@ class ImageModalityEncoder(ModalityEncoderBase):
 
         if not self.trainable:
             if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:
-                self.model.load_state_dict(
-                    torch.load(cfg.obs_encoder.model_path)
-                )  # TODO
+                self.model.load_state_dict(torch.load(cfg.obs_encoder.model_path))  # TODO
             if self.freeze:
                 self.model.freeze()
 
@@ -374,15 +351,11 @@ class ImageModalityEncoder(ModalityEncoderBase):
         else:  # len(obs.shape) == 3
             height, width, channel = obs.shape
 
-        processed_obs = self.modality.process_obs(
-            obs
-        )  # to [0, 1] of [-1, C, H, W] torch float tensor
+        processed_obs = self.modality.process_obs(obs)  # to [0, 1] of [-1, C, H, W] torch float tensor
 
         # TODO
         if self.encoder_model in ["AutoEncoder", "VariationalAutoEncoder"]:
-            latent, _, _ = self.nets["encoder"](
-                processed_obs
-            )  # (B, T, D) or (B, D) or (D)
+            latent, _, _ = self.nets["encoder"](processed_obs)  # (B, T, D) or (B, D) or (D)
         else:
             latent = self.nets["encoder"](processed_obs)
         if len(obs.shape) == 5:
@@ -413,9 +386,7 @@ class FloatVectorModalityEncoder(ModalityEncoderBase):
 
         super(FloatVectorModalityEncoder, self).__init__(
             obs_name=obs_name,
-            modality=FloatVectorModality(
-                name=obs_name, shape=self.input_dim, mean=mean, std=std
-            ),
+            modality=FloatVectorModality(name=obs_name, shape=self.input_dim, mean=mean, std=std),
         )
 
         self.nets = (

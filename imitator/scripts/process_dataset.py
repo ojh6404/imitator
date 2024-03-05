@@ -16,18 +16,12 @@ def main(args):
     hdf5_path = (
         args.dataset
         if args.dataset
-        else os.path.join(
-            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
-        )
+        else os.path.join(FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5")
     )
     obs_keys = list(config.obs.keys())
 
     # extract obs keys that is not image modality
-    obs_keys = [
-        key
-        for key in obs_keys
-        if config.obs[key].modality != "ImageModality" and config.obs[key].normalize
-    ]
+    obs_keys = [key for key in obs_keys if config.obs[key].modality != "ImageModality" and config.obs[key].normalize]
     print("obs_keys: ", obs_keys)
 
     dataset_keys = ["actions"]
@@ -91,9 +85,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dataset", type=str, help="path to hdf5 dataset")
-    parser.add_argument(
-        "-pn", "--project_name", type=str, required=True, help="project name"
-    )
+    parser.add_argument("-pn", "--project_name", type=str, required=True, help="project name")
     args = parser.parse_args()
 
     main(args)

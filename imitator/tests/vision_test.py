@@ -18,9 +18,7 @@ class SpatialSoftmax(torch.nn.Module):
         else:
             self.temperature = 1.0
 
-        pos_x, pos_y = np.meshgrid(
-            np.linspace(-1.0, 1.0, self.height), np.linspace(-1.0, 1.0, self.width)
-        )
+        pos_x, pos_y = np.meshgrid(np.linspace(-1.0, 1.0, self.height), np.linspace(-1.0, 1.0, self.width))
         pos_x = torch.from_numpy(pos_x.reshape(self.height * self.width)).float()
         pos_y = torch.from_numpy(pos_y.reshape(self.height * self.width)).float()
         self.register_buffer("pos_x", pos_x)
@@ -30,11 +28,7 @@ class SpatialSoftmax(torch.nn.Module):
         # Output:
         #   (N, C*2) x_0 y_0 ...
         if self.data_format == "NHWC":
-            feature = (
-                feature.transpose(1, 3)
-                .tranpose(2, 3)
-                .view(-1, self.height * self.width)
-            )
+            feature = feature.transpose(1, 3).tranpose(2, 3).view(-1, self.height * self.width)
         else:
             feature = feature.view(-1, self.height * self.width)
 

@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 
-import sys
 import numpy as np
-import textwrap
 import math
-from copy import deepcopy
 from collections import OrderedDict
 
 from typing import (
@@ -14,10 +11,6 @@ from typing import (
     Union,
     Optional,
     Any,
-    Callable,
-    Iterable,
-    Type,
-    Sequence,
 )
 
 import torch
@@ -49,12 +42,8 @@ def calculate_conv_output_size(
     assert len(kernel_sizes) == len(strides) == len(paddings)
     output_size = list(input_size)
     for i in range(len(kernel_sizes)):
-        output_size[0] = (
-            output_size[0] + 2 * paddings[i] - kernel_sizes[i]
-        ) // strides[i] + 1
-        output_size[1] = (
-            output_size[1] + 2 * paddings[i] - kernel_sizes[i]
-        ) // strides[i] + 1
+        output_size[0] = (output_size[0] + 2 * paddings[i] - kernel_sizes[i]) // strides[i] + 1
+        output_size[1] = (output_size[1] + 2 * paddings[i] - kernel_sizes[i]) // strides[i] + 1
     return output_size
 
 
@@ -68,18 +57,8 @@ def calculate_deconv_output_size(
     assert len(kernel_sizes) == len(strides) == len(paddings) == len(output_paddings)
     output_size = list(input_size)
     for i in range(len(kernel_sizes)):
-        output_size[0] = (
-            (output_size[0] - 1) * strides[i]
-            - 2 * paddings[i]
-            + kernel_sizes[i]
-            + output_paddings[i]
-        )
-        output_size[1] = (
-            (output_size[1] - 1) * strides[i]
-            - 2 * paddings[i]
-            + kernel_sizes[i]
-            + output_paddings[i]
-        )
+        output_size[0] = (output_size[0] - 1) * strides[i] - 2 * paddings[i] + kernel_sizes[i] + output_paddings[i]
+        output_size[1] = (output_size[1] - 1) * strides[i] - 2 * paddings[i] + kernel_sizes[i] + output_paddings[i]
     return output_size
 
 
@@ -141,9 +120,7 @@ class ConvEncoder(VisionModule):
         )
 
         self.mean_var = mean_var
-        self.output_activation = (
-            output_activation if output_activation is not None else lambda x: x
-        )
+        self.output_activation = output_activation if output_activation is not None else lambda x: x
 
         self.nets = nn.ModuleDict()
         self.nets["conv"] = CNN(
@@ -158,9 +135,7 @@ class ConvEncoder(VisionModule):
             normalization=normalization,
             output_activation=None,
         )
-        self.nets["reshape"] = Reshape(
-            (-1, channels[-1] * output_conv_size[0] * output_conv_size[1])
-        )
+        self.nets["reshape"] = Reshape((-1, channels[-1] * output_conv_size[0] * output_conv_size[1]))
 
         if mean_var:
             self.nets["mlp_mu"] = MLP(
@@ -169,9 +144,7 @@ class ConvEncoder(VisionModule):
                 layer_dims=[latent_dim * 4, latent_dim * 2],
                 activation=activation,
                 dropouts=None,
-                normalization=(
-                    nn.BatchNorm1d if normalization is not None else normalization
-                ),
+                normalization=(nn.BatchNorm1d if normalization is not None else normalization),
             )
             self.nets["mlp_logvar"] = MLP(
                 input_dim=channels[-1] * output_conv_size[0] * output_conv_size[1],
@@ -179,9 +152,7 @@ class ConvEncoder(VisionModule):
                 layer_dims=[latent_dim * 4, latent_dim * 2],
                 activation=activation,
                 dropouts=None,
-                normalization=(
-                    nn.BatchNorm1d if normalization is not None else normalization
-                ),
+                normalization=(nn.BatchNorm1d if normalization is not None else normalization),
             )
         else:
             self.nets["mlp"] = MLP(
@@ -190,9 +161,7 @@ class ConvEncoder(VisionModule):
                 layer_dims=[latent_dim * 4, latent_dim * 2],
                 activation=activation,
                 dropouts=None,
-                normalization=(
-                    nn.BatchNorm1d if normalization is not None else normalization
-                ),
+                normalization=(nn.BatchNorm1d if normalization is not None else normalization),
             )
 
     def reparametrize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
@@ -231,9 +200,7 @@ class ConvDecoder(VisionModule):
     ) -> None:
         super(ConvDecoder, self).__init__()
 
-        self.output_activation = (
-            output_activation if output_activation is not None else lambda x: x
-        )
+        self.output_activation = output_activation if output_activation is not None else lambda x: x
 
         self.nets = nn.ModuleDict()
         self.nets["mlp"] = MLP(
@@ -242,13 +209,9 @@ class ConvDecoder(VisionModule):
             layer_dims=[latent_dim * 2, latent_dim * 4],
             activation=activation,
             dropouts=None,
-            normalization=(
-                nn.BatchNorm1d if normalization is not None else normalization
-            ),
+            normalization=(nn.BatchNorm1d if normalization is not None else normalization),
         )
-        self.nets["reshape"] = Reshape(
-            (-1, channels[0], input_conv_size[0], input_conv_size[1])
-        )
+        self.nets["reshape"] = Reshape((-1, channels[0], input_conv_size[0], input_conv_size[1]))
         self.nets["deconv"] = CNN(
             input_channel=channels[0],
             channels=channels[1:] + [output_channel],
@@ -292,13 +255,7 @@ class AutoEncoder(VisionModule):
     ) -> None:
         super(AutoEncoder, self).__init__()
 
-        assert (
-            len(channels)
-            == len(encoder_kernel_sizes)
-            == len(strides)
-            == len(paddings)
-            == len(decoder_kernel_sizes)
-        )
+        assert len(channels) == len(encoder_kernel_sizes) == len(strides) == len(paddings) == len(decoder_kernel_sizes)
 
         output_conv_size = calculate_conv_output_size(
             input_size=input_size,  # TODO: input size
@@ -344,9 +301,7 @@ class AutoEncoder(VisionModule):
         x = self.nets["decoder"](z)
         return x, z
 
-    def forward_train(
-        self, x: torch.Tensor, ground_truth: torch.Tensor
-    ) -> Dict[str, torch.Tensor]:
+    def forward_train(self, x: torch.Tensor, ground_truth: torch.Tensor) -> Dict[str, torch.Tensor]:
         outputs = OrderedDict()
         z = self.nets["encoder"](x)
         reconstruction = self.nets["decoder"](z)
@@ -377,13 +332,7 @@ class VariationalAutoEncoder(VisionModule):
         **kwargs,
     ) -> None:
         super(VariationalAutoEncoder, self).__init__()
-        assert (
-            len(channels)
-            == len(encoder_kernel_sizes)
-            == len(strides)
-            == len(paddings)
-            == len(decoder_kernel_sizes)
-        )
+        assert len(channels) == len(encoder_kernel_sizes) == len(strides) == len(paddings) == len(decoder_kernel_sizes)
 
         output_conv_size = calculate_conv_output_size(
             input_size=input_size,  # TODO: input size
@@ -507,9 +456,7 @@ class SlotAttentionEncoder(VisionModule):
             hidden_dim=mlp_hidden_dim,
         )
 
-        self.nets["pos_encoder"] = SoftPositionEmbed(
-            hidden_dim=hidden_dim, resolution=input_size
-        )
+        self.nets["pos_encoder"] = SoftPositionEmbed(hidden_dim=hidden_dim, resolution=input_size)
 
         self.nets["layer_norm"] = nn.LayerNorm(hidden_dim)
         self.nets["permute"] = Permute([0, 2, 3, 1])
@@ -525,9 +472,7 @@ class SlotAttentionEncoder(VisionModule):
             output_activation=None,
         )
 
-    def forward(
-        self, x: torch.Tensor, vectorized_slot_feature: bool = False
-    ) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, vectorized_slot_feature: bool = False) -> torch.Tensor:
         x = self.nets["conv"](x)  # [B, 64, 128, 128]
         x = self.nets["permute"](x)  # [B, 128, 128, 64]
         x = self.nets["pos_encoder"](x)  # [B, 128, 128, 64]
@@ -624,9 +569,7 @@ class SlotAttentionDecoder(VisionModule):
         # `x` has shape: [batch_size*num_slots, width, height, num_channels+1].
 
         # Undo combination of slot and batch dimension; split alpha masks.
-        recons, masks = x.view(
-            batch_size, -1, x.shape[1], x.shape[2], x.shape[3]
-        ).split([3, 1], dim=-1)
+        recons, masks = x.view(batch_size, -1, x.shape[1], x.shape[2], x.shape[3]).split([3, 1], dim=-1)
         # `recons` has shape: [batch_size, num_slots, width, height, num_channels].
         # `masks` has shape: [batch_size, num_slots, width, height, 1].
 
@@ -700,9 +643,7 @@ class Resnet(VisionModule):
             "resnet152": [2048] + output_shape,
         }
 
-        assert (
-            resnet_type in RESNET_TYPES
-        ), f"resnet_type should be one of {RESNET_TYPES}"
+        assert resnet_type in RESNET_TYPES, f"resnet_type should be one of {RESNET_TYPES}"
 
         RESNET_WEIGHTS = {
             "resnet18": vision_models.ResNet18_Weights.DEFAULT,
@@ -748,9 +689,7 @@ class Resnet(VisionModule):
         else:
             self.pool = None
 
-        resnet_conv = list(resnet.children())[
-            :-2
-        ]  # [B] + RESNET_OUTPUT_DIM[resnet_type]
+        resnet_conv = list(resnet.children())[:-2]  # [B] + RESNET_OUTPUT_DIM[resnet_type]
 
         encoder_list = []
         encoder_list.extend(resnet_conv)
@@ -759,20 +698,12 @@ class Resnet(VisionModule):
         encoder_list.append(nn.Flatten(start_dim=1, end_dim=-1))
         if latent_dim is not None:
             if self.pool is not None:
-                encoder_list.append(
-                    nn.Linear(int(np.prod(self.pool.output_dim)), latent_dim)
-                )
+                encoder_list.append(nn.Linear(int(np.prod(self.pool.output_dim)), latent_dim))
             else:
-                encoder_list.append(
-                    nn.Linear(int(np.prod(RESNET_OUTPUT_DIM[resnet_type])), latent_dim)
-                )
+                encoder_list.append(nn.Linear(int(np.prod(RESNET_OUTPUT_DIM[resnet_type])), latent_dim))
         self.nets["encoder"] = nn.Sequential(*encoder_list)
 
-        self.output_dim = (
-            latent_dim
-            if latent_dim is not None
-            else np.prod(RESNET_OUTPUT_DIM[resnet_type])
-        )
+        self.output_dim = latent_dim if latent_dim is not None else np.prod(RESNET_OUTPUT_DIM[resnet_type])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.pretrained:
@@ -879,9 +810,7 @@ class CLIP(VisionModule):
         try:
             import clip
         except ImportError:
-            print(
-                "WARNING: could not load r3m library! Please follow https://github.com/openai/CLIP to install clip"
-            )
+            print("WARNING: could not load r3m library! Please follow https://github.com/openai/CLIP to install clip")
 
         CLIP_TYPES = ["resnet18", "resnet34", "resnet50"]
         CLIP_OUTPUT_DIM = {
@@ -909,9 +838,7 @@ class MVP(VisionModule):
         try:
             import mvp
         except ImportError:
-            print(
-                "WARNING: could not load mvp library! Please follow https://github.com/ir413/mvp to install MVP."
-            )
+            print("WARNING: could not load mvp library! Please follow https://github.com/ir413/mvp to install MVP.")
 
         self.nets = mvp.load(mvp_model_class)
         if freeze:
@@ -967,9 +894,7 @@ if __name__ == "__main__":
         output_variance=False,
         noise_std=0.0,
     )
-    resnet_encoder = Resnet(
-        pool="SpatialSoftmax", pool_kwargs=pool_kwargs, latent_dim=64
-    )
+    resnet_encoder = Resnet(pool="SpatialSoftmax", pool_kwargs=pool_kwargs, latent_dim=64)
 
     test_output = resnet_encoder(test_input)
     print(test_output.shape)

@@ -22,12 +22,8 @@ flags.DEFINE_string("device", "cuda", "Device to run training on.")
 flags.DEFINE_integer("num_epochs", 10000, "Number of epochs for finetuning.")
 flags.DEFINE_integer("seed", None, "Seed for reproducibility.")
 flags.DEFINE_string("checkpoint", None, "Path to checkpoint.")
-flags.DEFINE_bool(
-    "verify", False, "Whether to run in verify mode (no training, only validation)."
-)
-flags.DEFINE_bool(
-    "resume", False, "Whether to resume training from the latest checkpoint."
-)
+flags.DEFINE_bool("verify", False, "Whether to run in verify mode (no training, only validation).")
+flags.DEFINE_bool("resume", False, "Whether to resume training from the latest checkpoint.")
 
 
 def main(_):
@@ -43,51 +39,31 @@ def main(_):
     model = eval(model_type)(config).to(device)
 
     train_config = config.network.policy.train
-    train_config.batch_size = (
-        FLAGS.batch_size if FLAGS.batch_size else train_config.batch_size
-    )
-    train_config.num_epochs = (
-        FLAGS.num_epochs if FLAGS.num_epochs else train_config.num_epochs
-    )
+    train_config.batch_size = FLAGS.batch_size if FLAGS.batch_size else train_config.batch_size
+    train_config.num_epochs = FLAGS.num_epochs if FLAGS.num_epochs else train_config.num_epochs
     config.dataset.hdf5_path = (
         FLAGS.dataset
         if FLAGS.dataset
-        else os.path.join(
-            FileUtils.get_project_folder(FLAGS.project_name), "data/dataset.hdf5"
-        )
+        else os.path.join(FileUtils.get_project_folder(FLAGS.project_name), "data/dataset.hdf5")
     )
-    train_config.seq_length = (
-        config.network.policy.rnn.rnn_horizon if isinstance(model, RNNActor) else 1
-    )
+    train_config.seq_length = config.network.policy.rnn.rnn_horizon if isinstance(model, RNNActor) else 1
     config.dataset.seq_length = train_config.seq_length
     config.dataset.frame_stack = (
-        config.network.policy.transformer.context_length
-        if isinstance(model, TransformerActor)
-        else 1
+        config.network.policy.transformer.context_length if isinstance(model, TransformerActor) else 1
     )
     obs_keys = list(config.obs.keys())
-    train_dataloader, valid_dataloader = TrainUtils.build_dataloader(
-        obs_keys, config.dataset, train_config.batch_size
-    )
+    train_dataloader, valid_dataloader = TrainUtils.build_dataloader(obs_keys, config.dataset, train_config.batch_size)
 
     print("\n================ Dataset ================")
-    logging.info(
-        "Loaded Train Dataset Trajectory Lengths: ", len(train_dataloader.dataset)
-    )
-    logging.info(
-        "Loaded Valid Dataset Trajectory Lengths: ", len(valid_dataloader.dataset)
-    )
+    logging.info("Loaded Train Dataset Trajectory Lengths: ", len(train_dataloader.dataset))
+    logging.info("Loaded Valid Dataset Trajectory Lengths: ", len(valid_dataloader.dataset))
     print("========================================")
 
     print("\n================ Model ================")
     print(model)
     print("=======================================")
 
-    image_obs_keys = [
-        obs_key
-        for obs_key in obs_keys
-        if config.obs[obs_key].modality == "ImageModality"
-    ]
+    image_obs_keys = [obs_key for obs_key in obs_keys if config.obs[obs_key].modality == "ImageModality"]
     for image_obs in image_obs_keys:
         if config.obs[image_obs].obs_encoder.model_path is None:
             obs_default_model_path = os.path.join(
@@ -116,16 +92,12 @@ def main(_):
         if FLAGS.checkpoint:
             model.load_state_dict(torch.load(FLAGS.checkpoint))
         else:
-            model.load_state_dict(
-                torch.load(FileUtils.get_best_runs(FLAGS.project_name, model_type))
-            )
+            model.load_state_dict(torch.load(FileUtils.get_best_runs(FLAGS.project_name, model_type)))
     elif FLAGS.verify:
         if FLAGS.checkpoint:
             model.load_state_dict(torch.load(FLAGS.checkpoint))
         else:
-            model.load_state_dict(
-                torch.load(FileUtils.get_best_runs(FLAGS.project_name, model_type))
-            )
+            model.load_state_dict(torch.load(FileUtils.get_best_runs(FLAGS.project_name, model_type)))
         TrainUtils.verify(model, valid_dataloader.dataset, seed=FLAGS.seed)
         return
 
@@ -205,9 +177,7 @@ def main(_):
 
     # test
     model = actor_type(config).to(device)
-    model.load_state_dict(
-        torch.load(FileUtils.get_best_runs(FLAGS.project_name, model_type))
-    )
+    model.load_state_dict(torch.load(FileUtils.get_best_runs(FLAGS.project_name, model_type)))
     TrainUtils.verify(model, valid_dataloader.dataset, seed=FLAGS.seed)
 
 

@@ -50,25 +50,17 @@ def verify(model, dataset, obs_key="image"):
         ]
     )
 
-    test_image_tensor = TensorUtils.to_float(
-        TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
-    )
-    test_image_tensor = (
-        test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2).contiguous() / 255.0
-    )  # (1, C, H, W)
+    test_image_tensor = TensorUtils.to_float(TensorUtils.to_device(TensorUtils.to_tensor(test_image), device))
+    test_image_tensor = test_image_tensor.unsqueeze(0).permute(0, 3, 1, 2).contiguous() / 255.0  # (1, C, H, W)
     test_image_tensor = transform(test_image_tensor)
-    test_image = (
-        test_image_tensor.detach().cpu().squeeze(0).permute(1, 2, 0).numpy() * 255.0
-    ).astype(np.uint8)
+    test_image = (test_image_tensor.detach().cpu().squeeze(0).permute(1, 2, 0).numpy() * 255.0).astype(np.uint8)
 
     if args.model == "ae":
         x, z = model(test_image_tensor)
     elif args.model == "vae":
         x, z, mu, logvar = model(test_image_tensor)
 
-    test_image_recon = (
-        TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
-    ).astype(np.uint8)
+    test_image_recon = (TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0).astype(np.uint8)
     concat_image = concatenate_image(test_image, test_image_recon)
     concat_image = cv2.cvtColor(concat_image, cv2.COLOR_RGB2BGR)
     print("Embedding shape: ", z.shape)
@@ -82,9 +74,7 @@ def main(args):
     hdf5_path = (
         args.dataset
         if args.dataset
-        else os.path.join(
-            FileUtils.get_project_folder(args.project_name), "data/image_dataset.hdf5"
-        )
+        else os.path.join(FileUtils.get_project_folder(args.project_name), "data/image_dataset.hdf5")
     )
     obs_key = args.obs_key
     config = FileUtils.get_config_from_project_name(args.project_name)
@@ -101,9 +91,7 @@ def main(args):
             [
                 AddGaussianNoise(mean=0.0, std=0.1, p=0.5),
                 # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
-                RGBShifter(
-                    r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=0.5
-                ),
+                RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=0.5),
                 # T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5),
                 # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
             ]
@@ -144,25 +132,19 @@ def main(args):
         # collate_fn= # TODO collate fn to numpy ndarray
     )
 
-    model = eval(config.obs[obs_key].obs_encoder.model)(
-        **config.obs[obs_key].obs_encoder.model_kwargs
-    ).to(device)
+    model = eval(config.obs[obs_key].obs_encoder.model)(**config.obs[obs_key].obs_encoder.model_kwargs).to(device)
 
     # load checkpoint if resuming
     if args.resume:
         if args.checkpoint:
             model.load_state_dict(torch.load(args.checkpoint))
         else:
-            model.load_state_dict(
-                torch.load(FileUtils.get_best_runs(args.project_name, args.model))
-            )
+            model.load_state_dict(torch.load(FileUtils.get_best_runs(args.project_name, args.model)))
     elif args.verify:
         if args.checkpoint:
             model.load_state_dict(torch.load(args.checkpoint))
         else:
-            model.load_state_dict(
-                torch.load(FileUtils.get_best_runs(args.project_name, args.model))
-            )
+            model.load_state_dict(torch.load(FileUtils.get_best_runs(args.project_name, args.model)))
         verify(model, dataset, obs_key=obs_key)
         del dataset
         return
@@ -198,9 +180,7 @@ def main(args):
             data_loader_iter = iter(data_loader)
             batch = next(data_loader_iter)
 
-        batch_image = TensorUtils.to_device(
-            batch["obs"][obs_key], device
-        )  # (B, H, W, C)
+        batch_image = TensorUtils.to_device(batch["obs"][obs_key], device)  # (B, H, W, C)
         batch_image = batch_image.permute(0, 3, 1, 2)  # (B, C, H, W)
         batch_image = batch_image.contiguous().float() / 255.0
         batch_image = random_resize_crop(batch_image)
@@ -219,9 +199,7 @@ def main(args):
 
         summary_writer.add_scalar("train/loss", loss_sum.item(), global_step=epoch)
         # lr rate
-        summary_writer.add_scalar(
-            "train/lr", optimizer.param_groups[0]["lr"], global_step=epoch
-        )
+        summary_writer.add_scalar("train/lr", optimizer.param_groups[0]["lr"], global_step=epoch)
 
         # print loss with 5 significant digits every 100 epochs
         if epoch % 100 == 0:
@@ -231,9 +209,7 @@ def main(args):
             elif config.obs[obs_key].obs_encoder.model == "VariationalAutoEncoder":
                 recons_loss = loss_dict["reconstruction_loss"].item()
                 kl_loss = loss_dict["kld_loss"].item()
-                print(
-                    f"epoch: {epoch}, loss: {loss:.5g}, recons_loss: {recons_loss:.5g}, kl_loss: {kl_loss:.5g}"
-                )
+                print(f"epoch: {epoch}, loss: {loss:.5g}, recons_loss: {recons_loss:.5g}, kl_loss: {kl_loss:.5g}")
             # mkdir if not exist
             torch.save(
                 model.state_dict(),
@@ -266,13 +242,9 @@ def main(args):
 
     del model
     # load model for test
-    model = eval(config.obs[obs_key].obs_encoder.model)(
-        **config.obs[obs_key].obs_encoder.model_kwargs
-    ).to(device)
+    model = eval(config.obs[obs_key].obs_encoder.model)(**config.obs[obs_key].obs_encoder.model_kwargs).to(device)
 
-    model.load_state_dict(
-        torch.load(os.path.join(output_dir, args.model + "_model_best.pth"))
-    )
+    model.load_state_dict(torch.load(os.path.join(output_dir, args.model + "_model_best.pth")))
     verify(model, dataset, obs_key=obs_key)
 
     del dataset

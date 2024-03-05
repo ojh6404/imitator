@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
 import collections
-from typing import List, Tuple, Dict, Union, Any, Callable, Optional
+from typing import List, Tuple, Dict, Union, Callable
 import numpy as np
 import torch
-from PIL import Image as PILImage
 
 
 # def recursive_apply(x , type_fn_dict):
@@ -37,9 +36,7 @@ def map_ndarray(x, fn):
 
 
 def map_tensor_ndarray(x, tensor_fn, ndarray_fn):
-    return recursive_apply(
-        x, {torch.Tensor: tensor_fn, np.ndarray: ndarray_fn, type(None): lambda x: x}
-    )
+    return recursive_apply(x, {torch.Tensor: tensor_fn, np.ndarray: ndarray_fn, type(None): lambda x: x})
 
 
 def clone(x):
@@ -252,12 +249,8 @@ def reshape_dimensions(x, begin_axis, end_axis, target_dims):
     return recursive_apply(
         x,
         {
-            torch.Tensor: lambda x: reshape_dimensions_single(
-                x, begin_axis, end_axis, target_dims
-            ),
-            np.ndarray: lambda x: reshape_dimensions_single(
-                x, begin_axis, end_axis, target_dims
-            ),
+            torch.Tensor: lambda x: reshape_dimensions_single(x, begin_axis, end_axis, target_dims),
+            np.ndarray: lambda x: reshape_dimensions_single(x, begin_axis, end_axis, target_dims),
             type(None): lambda x: x,
         },
     )
@@ -267,12 +260,8 @@ def join_dimensions(x, begin_axis, end_axis):
     return recursive_apply(
         x,
         {
-            torch.Tensor: lambda x: reshape_dimensions_single(
-                x, begin_axis, end_axis, target_dims=[-1]
-            ),
-            np.ndarray: lambda x: reshape_dimensions_single(
-                x, begin_axis, end_axis, target_dims=[-1]
-            ),
+            torch.Tensor: lambda x: reshape_dimensions_single(x, begin_axis, end_axis, target_dims=[-1]),
+            np.ndarray: lambda x: reshape_dimensions_single(x, begin_axis, end_axis, target_dims=[-1]),
             type(None): lambda x: x,
         },
     )
@@ -325,12 +314,8 @@ def pad_sequence(seq, padding, batched=False, pad_same=True, pad_values=None):
     return recursive_apply(
         seq,
         {
-            torch.Tensor: lambda x: pad_sequence_single(
-                x, padding, batched, pad_same, pad_values
-            ),
-            np.ndarray: lambda x: pad_sequence_single(
-                x, padding, batched, pad_same, pad_values
-            ),
+            torch.Tensor: lambda x: pad_sequence_single(x, padding, batched, pad_same, pad_values),
+            np.ndarray: lambda x: pad_sequence_single(x, padding, batched, pad_same, pad_values),
             type(None): lambda x: x,
         },
     )
@@ -384,9 +369,7 @@ def flatten_nested(d, parent_key="", sep="_", item_key=""):
         return [(new_key, d)]
 
 
-def time_distributed(
-    inputs, op, activation=None, inputs_as_kwargs=False, inputs_as_args=False, **kwargs
-):
+def time_distributed(inputs, op, activation=None, inputs_as_kwargs=False, inputs_as_args=False, **kwargs):
     batch_size, seq_len = flatten_nested(inputs)[0][1].shape[:2]
     inputs = join_dimensions(inputs, 0, 1)
     if inputs_as_kwargs:
@@ -398,9 +381,7 @@ def time_distributed(
 
     if activation is not None:
         outputs = map_tensor(outputs, activation)
-    outputs = reshape_dimensions(
-        outputs, begin_axis=0, end_axis=0, target_dims=(batch_size, seq_len)
-    )
+    outputs = reshape_dimensions(outputs, begin_axis=0, end_axis=0, target_dims=(batch_size, seq_len))
     return outputs
 
 

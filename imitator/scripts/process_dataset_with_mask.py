@@ -133,9 +133,7 @@ def main(args):
     hdf5_path = (
         args.dataset
         if args.dataset
-        else os.path.join(
-            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
-        )
+        else os.path.join(FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5")
     )
     obs_keys = list(config.obs.keys())
 
@@ -146,20 +144,14 @@ def main(args):
 
     print("Processing dataset: {}".format(hdf5_path))
     dino_config = os.path.join(perception_pkg_path, "config/GroundingDINO_SwinT_OGC.py")
-    dino_checkpoint = download_checkpoint(
-        "dino", os.path.join(perception_pkg_path, "checkpoints")
-    )
+    dino_checkpoint = download_checkpoint("dino", os.path.join(perception_pkg_path, "checkpoints"))
     grounding_dino = load_model(dino_config, dino_checkpoint, device=device)
 
-    sam_checkpoint = download_checkpoint(
-        "sam_hq_vit_h", os.path.join(perception_pkg_path, "checkpoints")
-    )
+    sam_checkpoint = download_checkpoint("sam_hq_vit_h", os.path.join(perception_pkg_path, "checkpoints"))
     sam = sam_model_registry["vit_h"](checkpoint=sam_checkpoint).to(device)
     predictor = SamPredictor(sam)
 
-    xmem_checkpoint = download_checkpoint(
-        "xmem", os.path.join(perception_pkg_path, "checkpoints")
-    )
+    xmem_checkpoint = download_checkpoint("xmem", os.path.join(perception_pkg_path, "checkpoints"))
     tracker_config = os.path.join(perception_pkg_path, "config/tracker_config.yaml")
     xmem = BaseTracker(xmem_checkpoint, tracker_config, device="cuda:0")
 
@@ -177,15 +169,9 @@ def main(args):
         mask_group = processed_dataset.create_group("mask")
         for mask_key in original_dataset["mask"].keys():
             print("mask_key: {}".format(mask_key))
-            print(
-                "original_dataset[mask_key]: {}".format(
-                    original_dataset["mask/{}".format(mask_key)][:]
-                )
-            )
+            print("original_dataset[mask_key]: {}".format(original_dataset["mask/{}".format(mask_key)][:]))
 
-            mask_group.create_dataset(
-                mask_key, data=original_dataset["mask/{}".format(mask_key)][:]
-            )
+            mask_group.create_dataset(mask_key, data=original_dataset["mask/{}".format(mask_key)][:])
 
     # concatenate text into one string
     num_objects = len(args.text_prompt)
@@ -195,9 +181,7 @@ def main(args):
     # demos
     for demo in tqdm(original_dataset["data"].keys()):
         demo_group = data_group.create_group(demo)
-        demo_group.attrs["num_samples"] = original_dataset["data"][demo].attrs[
-            "num_samples"
-        ]
+        demo_group.attrs["num_samples"] = original_dataset["data"][demo].attrs["num_samples"]
 
         # copy actions
         demo_group.create_dataset(
@@ -213,9 +197,7 @@ def main(args):
 
             # create mask if obs's modality is ImageModality
             if config.obs[obs_key].modality == "ImageModality":
-                original_images = original_dataset["data"][demo]["obs"][
-                    obs_key
-                ]  # [T, H, W, C]
+                original_images = original_dataset["data"][demo]["obs"][obs_key]  # [T, H, W, C]
 
                 predictor.set_image(original_images[0])
 
@@ -229,9 +211,7 @@ def main(args):
                     while True:
                         cv2.imshow("original", prompt_image)
                         cv2.setMouseCallback("original", get_points)
-                        prompt_image = point_drawer(
-                            prompt_image, points, labels=[1] * len(points)
-                        )
+                        prompt_image = point_drawer(prompt_image, points, labels=[1] * len(points))
                         prompt_points = np.array(deepcopy(points))
                         if len(prompt_points) > 0:
                             masks, scores, logits = predictor.predict(
@@ -245,9 +225,7 @@ def main(args):
                                 masks[np.argmax(scores)],
                                 logits[np.argmax(scores)],
                             )  # choose the best mask [H, W]
-                            prompt_image = mask_painter(
-                                prompt_image, mask, color_index=len(prompt_masks) + 1
-                            )
+                            prompt_image = mask_painter(prompt_image, mask, color_index=len(prompt_masks) + 1)
 
                             # refine mask
                             masks, scores, logits = predictor.predict(
@@ -298,9 +276,7 @@ def main(args):
                                 break
 
                     if len(phrases) == len(args.text_prompt):
-                        bboxes_tensor = torch.Tensor(ordered_bboxes).to(
-                            device
-                        )  # [N, 4]
+                        bboxes_tensor = torch.Tensor(ordered_bboxes).to(device)  # [N, 4]
                         transformed_bboxes = predictor.transform.apply_boxes_torch(
                             bboxes_tensor, original_images.shape[:2]
                         )  # [N, 4]
@@ -321,9 +297,7 @@ def main(args):
                         while True:
                             cv2.imshow("original", prompt_image)
                             cv2.setMouseCallback("original", get_points)
-                            prompt_image = point_drawer(
-                                prompt_image, points, labels=[1] * len(points)
-                            )
+                            prompt_image = point_drawer(prompt_image, points, labels=[1] * len(points))
                             prompt_points = np.array(deepcopy(points))
                             if len(prompt_points) > 0:
                                 masks, scores, logits = predictor.predict(
@@ -371,16 +345,12 @@ def main(args):
                                 points = []
                                 cv2.destroyAllWindows()
                                 break
-                template_mask = compose_mask(
-                    first_masks
-                )  # [H, W] with 0, 1, 2, 3, ... N, 0 is background
+                template_mask = compose_mask(first_masks)  # [H, W] with 0, 1, 2, 3, ... N, 0 is background
                 masks = []  # [T, H, W]
 
                 for i, original_image in enumerate(original_images):
                     if i == 0:
-                        template_mask, logit = xmem.track(
-                            frame=original_image, first_frame_annotation=template_mask
-                        )
+                        template_mask, logit = xmem.track(frame=original_image, first_frame_annotation=template_mask)
                     else:
                         template_mask, logit = xmem.track(frame=original_image)
                     masks.append(template_mask)
@@ -390,12 +360,8 @@ def main(args):
                         debug_image = np.zeros(original_image.shape, dtype=np.uint8)
                         # draw mask 1==R, 2==G, 3==B
                         for n in range(3):
-                            debug_image[:, :, n] = (template_mask == (n + 1)).astype(
-                                np.uint8
-                            ) * 255
-                        cv2.imshow(
-                            "debug", cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR)
-                        )
+                            debug_image[:, :, n] = (template_mask == (n + 1)).astype(np.uint8) * 255
+                        cv2.imshow("debug", cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR))
                         cv2.waitKey(1)
                 xmem.clear_memory()
                 masks = np.stack(masks, axis=0)  # [T, H, W]
@@ -412,9 +378,7 @@ def main(args):
                     dtype=masks.dtype,
                 )
 
-                rgb_mask = np.zeros(
-                    (masks.shape[0], masks.shape[1], masks.shape[2], 3), dtype=np.uint8
-                )
+                rgb_mask = np.zeros((masks.shape[0], masks.shape[1], masks.shape[2], 3), dtype=np.uint8)
                 for n in range(3):
                     rgb_mask[:, :, :, n] = (masks == (n + 1)).astype(np.uint8) * 255
 

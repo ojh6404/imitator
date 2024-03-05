@@ -1,6 +1,4 @@
-import os
 from abc import ABC, abstractmethod
-import numpy as np
 from collections import OrderedDict
 
 from typing import Dict, Optional, Tuple, Union
@@ -38,9 +36,7 @@ class Actor(ABC, nn.Module):
         self.action_dim = cfg.actions.dim
 
         if cfg.actions.normalize:
-            action_mean, action_std = get_normalize_params(
-                cfg.actions.min, cfg.actions.max
-            )
+            action_mean, action_std = get_normalize_params(cfg.actions.min, cfg.actions.max)
         else:
             action_mean, action_std = 0.0, 1.0
         self.action_modality = eval(cfg.actions.modality)(
@@ -48,14 +44,10 @@ class Actor(ABC, nn.Module):
         )
 
         self.nets = nn.ModuleDict()
-        self.criterion = eval(
-            "nn." + cfg.network.policy.get("criterion", "MSELoss") + "()"
-        )
+        self.criterion = eval("nn." + cfg.network.policy.get("criterion", "MSELoss") + "()")
         self.training = True
 
-        self.supervise_all_steps = cfg.network.policy.train.get(
-            "supervise_all_steps", False
-        )
+        self.supervise_all_steps = cfg.network.policy.train.get("supervise_all_steps", False)
 
         self.gmm = cfg.network.policy.gmm.get("enabled", False)
         if self.gmm:
@@ -66,21 +58,12 @@ class Actor(ABC, nn.Module):
             self.gmm_activation = F.softplus
 
         self.mlp_decoder_layer_dim = cfg.network.policy.mlp_decoder.layer_dims
-        self.mlp_activation = eval(
-            "nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU")
-        )
+        self.mlp_activation = eval("nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU"))
         self.mlp_decoder_output_dim = (
-            self.action_dim * self.gmm_mode * 2 + self.gmm_mode
-            if self.gmm
-            else self.action_dim
+            self.action_dim * self.gmm_mode * 2 + self.gmm_mode if self.gmm else self.action_dim
         )
         self.mlp_decoder_output_activation = (
-            nn.Tanh
-            if (
-                cfg.network.policy.mlp_decoder.get("squash_output", False)
-                and not self.gmm
-            )
-            else None
+            nn.Tanh if (cfg.network.policy.mlp_decoder.get("squash_output", False) and not self.gmm) else None
         )
 
     @abstractmethod
@@ -128,21 +111,19 @@ class Actor(ABC, nn.Module):
         dists = None
         batch_size, _, _ = mlp_decoder_outputs.shape
         if actions is not None:
-            actions = self.action_modality.process_obs(actions).reshape(
-                batch_size, -1, self.action_dim
-            )
+            actions = self.action_modality.process_obs(actions).reshape(batch_size, -1, self.action_dim)
         if self.gmm:
-            means = mlp_decoder_outputs[
-                :, :, : self.action_dim * self.gmm_mode
-            ].reshape(batch_size, -1, self.gmm_mode, self.action_dim)
+            means = mlp_decoder_outputs[:, :, : self.action_dim * self.gmm_mode].reshape(
+                batch_size, -1, self.gmm_mode, self.action_dim
+            )
             scales = mlp_decoder_outputs[
                 :,
                 :,
                 self.action_dim * self.gmm_mode : self.action_dim * self.gmm_mode * 2,
             ].reshape(batch_size, -1, self.gmm_mode, self.action_dim)
-            logits = mlp_decoder_outputs[
-                :, :, self.action_dim * self.gmm_mode * 2 :
-            ].reshape(batch_size, -1, self.gmm_mode)
+            logits = mlp_decoder_outputs[:, :, self.action_dim * self.gmm_mode * 2 :].reshape(
+                batch_size, -1, self.gmm_mode
+            )
 
             if not self.use_tanh:  # TODO
                 means = torch.tanh(means)
@@ -166,9 +147,7 @@ class Actor(ABC, nn.Module):
                     scale=dists.component_distribution.base_dist.scale[:, -1],
                 )
                 component_distribution = D.Independent(component_distribution, 1)
-                mixture_distribution = D.Categorical(
-                    logits=dists.mixture_distribution.logits[:, -1]
-                )
+                mixture_distribution = D.Categorical(logits=dists.mixture_distribution.logits[:, -1])
                 dists = D.MixtureSameFamily(
                     mixture_distribution=mixture_distribution,
                     component_distribution=component_distribution,
@@ -189,9 +168,7 @@ class MLPActor(Actor):
             [cfg.obs[key].obs_encoder.output_dim for key in cfg.obs.keys()]
         )  # sum of all obs_encoder output dims
         self.mlp_decoder_layer_dim = cfg.network.policy.mlp_decoder.layer_dims
-        self.mlp_activation = eval(
-            "nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU")
-        )
+        self.mlp_activation = eval("nn." + cfg.network.policy.mlp_decoder.get("activation", "ReLU"))
         self.mlp_kwargs = cfg.network.policy.get("kwargs", {})
         self._build_network()
 
@@ -244,9 +221,7 @@ class RNNActor(Actor):
         self.rnn_horizon = cfg.network.policy.rnn.get("rnn_horizon", 10)
         self.open_loop = cfg.network.policy.rnn.get("open_loop", False)  # TODO
         self.rnn_kwargs = cfg.network.policy.rnn.get("kwargs", {})
-        self.supervise_all_steps = cfg.network.policy.train.get(
-            "supervise_all_steps", True
-        )
+        self.supervise_all_steps = cfg.network.policy.train.get("supervise_all_steps", True)
         self._build_network()
 
     def _build_network(self) -> None:
@@ -320,33 +295,19 @@ class TransformerActor(Actor):
     def __init__(self, cfg: Dict) -> None:
         super(TransformerActor, self).__init__(cfg)
         self.transformer_type = cfg.network.policy.transformer.type  # TODO
-        self.transformer_num_layers = cfg.network.policy.transformer.get(
-            "num_layers", 6
-        )
+        self.transformer_num_layers = cfg.network.policy.transformer.get("num_layers", 6)
         self.transformer_num_heads = cfg.network.policy.transformer.get("num_heads", 8)
-        self.transformer_embed_dim = cfg.network.policy.transformer.get(
-            "embed_dim", 512
-        )
+        self.transformer_embed_dim = cfg.network.policy.transformer.get("embed_dim", 512)
         self.transformer_input_dim = sum(
             [cfg.obs[key].obs_encoder.output_dim for key in cfg.obs.keys()]
         )  # sum of all obs_encoder output dims
         self.transformer_kwargs = cfg.network.policy.transformer.get("kwargs", {})
-        self.transformer_embed_dropout = cfg.network.policy.transformer.get(
-            "embed_dropout", 0.1
-        )
-        self.transformer_attn_dropout = cfg.network.policy.transformer.get(
-            "attn_dropout", 0.1
-        )
-        self.transformer_block_dropout = cfg.network.policy.transformer.get(
-            "block_dropout", 0.1
-        )
-        self.transformer_activation = cfg.network.policy.transformer.get(
-            "activation", "gelu"
-        )
+        self.transformer_embed_dropout = cfg.network.policy.transformer.get("embed_dropout", 0.1)
+        self.transformer_attn_dropout = cfg.network.policy.transformer.get("attn_dropout", 0.1)
+        self.transformer_block_dropout = cfg.network.policy.transformer.get("block_dropout", 0.1)
+        self.transformer_activation = cfg.network.policy.transformer.get("activation", "gelu")
         self.context_length = cfg.network.policy.transformer.get("context_length", 10)
-        self.supervise_all_steps = cfg.network.policy.train.get(
-            "supervise_all_steps", True
-        )
+        self.supervise_all_steps = cfg.network.policy.train.get("supervise_all_steps", True)
         self._build_network()
 
     def _build_network(self) -> None:
@@ -420,9 +381,7 @@ class TransformerActor(Actor):
         obs_latents = self.nets["obs_encoder"](batch["obs"])  # [B, T, D] falttened
         assert obs_latents.ndim == 3  # [B, T, D]
         transformer_embeddings = self.input_embedding(obs_latents)
-        transformer_encoder_outputs = self.nets["transformer"].forward(
-            transformer_embeddings
-        )
+        transformer_encoder_outputs = self.nets["transformer"].forward(transformer_embeddings)
         mlp_decoder_outputs = self.nets["mlp_decoder"](transformer_encoder_outputs)
         actions = batch.get("actions", None)
         outputs = self.mlp_decoder_postprocess(mlp_decoder_outputs, actions)

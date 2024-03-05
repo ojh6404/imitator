@@ -27,9 +27,7 @@ import imitator.utils.file_utils as FileUtils
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("project_name", None, "Name of the project to load config from.")
-flags.DEFINE_string(
-    "pretrained_path", None, "Path to pre-trained Octo checkpoint directory."
-)
+flags.DEFINE_string("pretrained_path", None, "Path to pre-trained Octo checkpoint directory.")
 flags.DEFINE_string("data_dir", None, "Path to finetuning dataset, in RLDS format.")
 flags.DEFINE_string("save_dir", None, "Directory for saving finetuning checkpoints.")
 flags.DEFINE_integer("batch_size", 128, "Batch size for finetuning.")
@@ -40,9 +38,7 @@ flags.DEFINE_bool(
 )
 flags.DEFINE_string("primary_image_obs", "head_image", "Primary image observation key.")
 flags.DEFINE_integer("window_size", 1, "Window size for finetuning dataset.")
-flags.DEFINE_integer(
-    "pred_horizon", 10, "Prediction horizon for finetuning action head."
-)
+flags.DEFINE_integer("pred_horizon", 10, "Prediction horizon for finetuning action head.")
 flags.DEFINE_integer("epoch", 10000, "Number of epochs for finetuning.")
 
 
@@ -51,19 +47,13 @@ def main(_):
     FileUtils.print_config(imitator_config)
 
     if FLAGS.save_dir is None:
-        FLAGS.save_dir = os.path.join(
-            FileUtils.get_project_folder(FLAGS.project_name), "octo_checkpoints"
-        )
+        FLAGS.save_dir = os.path.join(FileUtils.get_project_folder(FLAGS.project_name), "octo_checkpoints")
         os.makedirs(FLAGS.save_dir, exist_ok=True)
     if FLAGS.data_dir is None:
         # default is ~/tensorflow_datasets/imitator_dataset
-        FLAGS.data_dir = os.path.join(
-            os.path.expanduser("~"), "tensorflow_datasets", "imitator_dataset"
-        )
+        FLAGS.data_dir = os.path.join(os.path.expanduser("~"), "tensorflow_datasets", "imitator_dataset")
 
-    assert (
-        FLAGS.batch_size % jax.device_count() == 0
-    ), "Batch size must be divisible by device count."
+    assert FLAGS.batch_size % jax.device_count() == 0, "Batch size must be divisible by device count."
 
     initialize_compilation_cache()
     # prevent tensorflow from using GPU memory since it's only used for data loading
@@ -96,11 +86,7 @@ def main(_):
             future_action_window_size=FLAGS.pred_horizon - FLAGS.window_size,
         ),
         frame_transform_kwargs=dict(
-            resize_size={
-                "primary": imitator_config.obs[
-                    FLAGS.primary_image_obs
-                ].obs_encoder.input_dim[:2]
-            },
+            resize_size={"primary": imitator_config.obs[FLAGS.primary_image_obs].obs_encoder.input_dim[:2]},
         ),
         train=True,
     )
@@ -124,9 +110,7 @@ def main(_):
     example_batch = next(train_data_iter)
 
     config = pretrained_model.config
-    del config["model"]["observation_tokenizers"][
-        "wrist"
-    ]  # delete cause we don't have wrist data
+    del config["model"]["observation_tokenizers"]["wrist"]  # delete cause we don't have wrist data
 
     ### TODO make it configurable to add new observation tokenizers
     config["model"]["observation_tokenizers"]["proprio"] = ModuleSpec.create(
@@ -163,9 +147,7 @@ def main(_):
 
     # create optimizer & train_state, optionally freeze keys for pre-trained transformer
     # train_state bundles parameters & optimizers
-    learning_rate = optax.join_schedules(
-        [optax.linear_schedule(0, 3e-5, 100), optax.constant_schedule(3e-5)], [100]
-    )
+    learning_rate = optax.join_schedules([optax.linear_schedule(0, 3e-5, 100), optax.constant_schedule(3e-5)], [100])
     tx = optax.adamw(learning_rate)
     frozen_keys = model.config["optimizer"]["frozen_keys"]
     if FLAGS.freeze_transformer:

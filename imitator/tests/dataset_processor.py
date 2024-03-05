@@ -137,9 +137,7 @@ def main(args):
     hdf5_path = (
         args.dataset
         if args.dataset
-        else os.path.join(
-            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
-        )
+        else os.path.join(FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5")
     )
     obs_keys = list(config.obs.keys())
 
@@ -176,9 +174,7 @@ def main(args):
     # demos
     for demo in tqdm(original_dataset["data"].keys()):
         demo_group = data_group.create_group(demo)
-        demo_group.attrs["num_samples"] = original_dataset["data"][demo].attrs[
-            "num_samples"
-        ]
+        demo_group.attrs["num_samples"] = original_dataset["data"][demo].attrs["num_samples"]
 
         # copy actions
         demo_group.create_dataset(
@@ -193,9 +189,7 @@ def main(args):
 
             # create mask if obs's modality is ImageModality
             if config.obs[obs_key].modality == "ImageModality":
-                original_images = original_dataset["data"][demo]["obs"][
-                    obs_key
-                ]  # [T, H, W, C]
+                original_images = original_dataset["data"][demo]["obs"][obs_key]  # [T, H, W, C]
 
                 predictor.set_image(original_images[0])
 
@@ -209,9 +203,7 @@ def main(args):
                     while True:
                         cv2.imshow("original", prompt_image)
                         cv2.setMouseCallback("original", get_points)
-                        prompt_image = point_drawer(
-                            prompt_image, points, labels=[1] * len(points)
-                        )
+                        prompt_image = point_drawer(prompt_image, points, labels=[1] * len(points))
                         prompt_points = np.array(deepcopy(points))
                         if len(prompt_points) > 0:
                             masks, scores, logits = predictor.predict(
@@ -225,9 +217,7 @@ def main(args):
                                 masks[np.argmax(scores)],
                                 logits[np.argmax(scores)],
                             )  # choose the best mask [H, W]
-                            prompt_image = mask_painter(
-                                prompt_image, mask, color_index=len(prompt_masks) + 1
-                            )
+                            prompt_image = mask_painter(prompt_image, mask, color_index=len(prompt_masks) + 1)
 
                             # refine mask
                             masks, scores, logits = predictor.predict(
@@ -281,9 +271,7 @@ def main(args):
                                 break
 
                     if len(phrases) == len(args.text_prompt):
-                        bboxes_tensor = torch.Tensor(ordered_bboxes).to(
-                            device
-                        )  # [N, 4]
+                        bboxes_tensor = torch.Tensor(ordered_bboxes).to(device)  # [N, 4]
                         transformed_bboxes = predictor.transform.apply_boxes_torch(
                             bboxes_tensor, original_images.shape[:2]
                         )  # [N, 4]
@@ -304,9 +292,7 @@ def main(args):
                         while True:
                             cv2.imshow("original", prompt_image)
                             cv2.setMouseCallback("original", get_points)
-                            prompt_image = point_drawer(
-                                prompt_image, points, labels=[1] * len(points)
-                            )
+                            prompt_image = point_drawer(prompt_image, points, labels=[1] * len(points))
                             prompt_points = np.array(deepcopy(points))
                             if len(prompt_points) > 0:
                                 masks, scores, logits = predictor.predict(
@@ -355,26 +341,20 @@ def main(args):
                                 cv2.destroyAllWindows()
                                 break
 
-                template_mask = compose_mask(
-                    first_masks
-                )  # [H, W] with 0, 1, 2, 3, ... N, 0 is background
+                template_mask = compose_mask(first_masks)  # [H, W] with 0, 1, 2, 3, ... N, 0 is background
                 masks = []  # [T, H, W]
                 object_slot_images = []  # [T, N, H, W, C]
                 cropped_rois = []  # [T, N, H, W, C]
 
                 for i, original_image in enumerate(original_images):
                     if i == 0:
-                        template_mask, logit = xmem.track(
-                            frame=original_image, first_frame_annotation=template_mask
-                        )
+                        template_mask, logit = xmem.track(frame=original_image, first_frame_annotation=template_mask)
                     else:
                         template_mask, logit = xmem.track(frame=original_image)
                     masks.append(template_mask)
 
                     # masked_image = masking_image(original_image, template_mask)
-                    bboxes = mask_to_bbox(
-                        template_mask, num_objects=len(args.text_prompt)
-                    )  # [N, 4]
+                    bboxes = mask_to_bbox(template_mask, num_objects=len(args.text_prompt))  # [N, 4]
                     assert len(bboxes) == len(args.text_prompt)
 
                     object_mask_images = seperate_each_object_from_image(
@@ -385,9 +365,7 @@ def main(args):
                     cropped_roi = []  # [N, H, W, C]
                     for i, bbox in enumerate(bboxes):
                         # object_mask_image = masking_image(original_image, bbox)
-                        resized_roi_image = resize_roi_from_bbox(
-                            object_mask_images[i], bbox, (224, 224)
-                        )
+                        resized_roi_image = resize_roi_from_bbox(object_mask_images[i], bbox, (224, 224))
                         cropped_roi.append(resized_roi_image)
 
                     cropped_roi = np.stack(cropped_roi, axis=0)  # [N, H, W, C]
@@ -398,16 +376,12 @@ def main(args):
                         # visualize cropped roi image like [H, W*N, C]
                         # debug_image = np.concatenate(cropped_roi, axis=1)
                         debug_image = np.concatenate(object_mask_images, axis=1)
-                        cv2.imshow(
-                            "debug", cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR)
-                        )
+                        cv2.imshow("debug", cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR))
                         cv2.waitKey(1)
                 xmem.clear_memory()
 
                 masks = np.stack(masks, axis=0)  # [T, H, W]
-                object_slot_images = np.stack(
-                    object_slot_images, axis=0
-                )  # [T, N, H, W, C]
+                object_slot_images = np.stack(object_slot_images, axis=0)  # [T, N, H, W, C]
                 cropped_rois = np.stack(cropped_rois, axis=0)  # [T, N, H, W, C]
                 # save mask
                 obs_group.create_dataset(

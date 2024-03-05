@@ -36,9 +36,7 @@ class ImitatorDataset(tfds.core.GeneratorBasedBuilder):
                     encoding_format="png",
                     doc="Camera RGB observation.",
                 )
-            elif (
-                obs_config.modality == "FloatVectorModality"
-            ):  # when FloatVectorModality
+            elif obs_config.modality == "FloatVectorModality":  # when FloatVectorModality
                 tfds_obs[obs_key] = tfds.features.Tensor(
                     shape=(obs_config.obs_encoder.input_dim,),
                     dtype=np.float32,
@@ -65,19 +63,13 @@ class ImitatorDataset(tfds.core.GeneratorBasedBuilder):
                                 dtype=np.float32,
                                 doc="Reward if provided, 1 on final step for demos.",
                             ),
-                            "is_first": tfds.features.Scalar(
-                                dtype=np.bool_, doc="True on first step of the episode."
-                            ),
-                            "is_last": tfds.features.Scalar(
-                                dtype=np.bool_, doc="True on last step of the episode."
-                            ),
+                            "is_first": tfds.features.Scalar(dtype=np.bool_, doc="True on first step of the episode."),
+                            "is_last": tfds.features.Scalar(dtype=np.bool_, doc="True on last step of the episode."),
                             "is_terminal": tfds.features.Scalar(
                                 dtype=np.bool_,
                                 doc="True on last step of the episode if it is a terminal step, True for demos.",
                             ),
-                            "language_instruction": tfds.features.Text(
-                                doc="Language Instruction."
-                            ),
+                            "language_instruction": tfds.features.Text(doc="Language Instruction."),
                         }
                     ),
                 }
@@ -108,9 +100,7 @@ class ImitatorDataset(tfds.core.GeneratorBasedBuilder):
             for i in range(demo_len):
                 episode.append(
                     {
-                        "observation": {
-                            obs_key: demo["obs"][obs_key][i] for obs_key in obs_keys
-                        },
+                        "observation": {obs_key: demo["obs"][obs_key][i] for obs_key in obs_keys},
                         "action": demo["actions"][i],
                         "discount": 1.0,
                         "reward": float(i == (demo_len - 1)),
@@ -125,7 +115,7 @@ class ImitatorDataset(tfds.core.GeneratorBasedBuilder):
         # for large datasets use beam to parallelize data parsing (this will have initialization overhead)
         if self.use_beam:
             beam = tfds.core.lazy_imports.apache_beam
-            return beam.Create(episode_paths) | beam.Map(_parse_example)
+            return beam.Create(demos) | beam.Map(_parse_example)
         else:  # for smallish datasets, use single-thread parsing
             for demo in demos:
                 yield _parse_example(demo)

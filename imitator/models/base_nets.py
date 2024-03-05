@@ -2,18 +2,13 @@
 
 
 import math
-from abc import abstractmethod
-from collections import OrderedDict
 import numpy as np
 from typing import Optional, Union, Tuple, List, Dict
 
-from PIL import Image as PILImage
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import transforms
-from torchvision import models as vision_models
 
 import imitator.utils.tensor_utils as TensorUtils
 
@@ -125,9 +120,7 @@ class SoftPositionEmbed(nn.Module):
     Module that adds soft positional embeddings to a tensor.
     """
 
-    def __init__(
-        self, hidden_dim: int, resolution: Union[Tuple[int, int], List[int]]
-    ) -> None:
+    def __init__(self, hidden_dim: int, resolution: Union[Tuple[int, int], List[int]]) -> None:
         super(SoftPositionEmbed, self).__init__()
         self._hidden_dim = hidden_dim
         self._resolution = resolution
@@ -216,7 +209,7 @@ class SlotAttention(nn.Module):
     #     return slots
 
     def forward(self, inputs, num_slots=None):
-        b, n, d, device, dtype = *inputs.shape, inputs.device, inputs.dtype
+        b, _, d, device, dtype = *inputs.shape, inputs.device, inputs.dtype
         n_s = num_slots if num_slots is not None else self._num_slots
         mu = self.slots_mu.expand(b, n_s, -1)
         sigma = self.slots_log_sigma.exp().expand(b, n_s, -1)
@@ -430,9 +423,7 @@ class CNN(nn.Module):
                     **layer_kwargs,
                 )
             )
-            if (
-                normalization is not None and i != len(channels) - 1
-            ):  # not the last layer
+            if normalization is not None and i != len(channels) - 1:  # not the last layer
                 layers.append(normalization(out_channels))
             if i != len(channels) - 1:  # not the last layer
                 layers.append(activation())
@@ -528,20 +519,14 @@ class SpatialSoftmax(nn.Module):
 
         if self.learnable_temperature:
             # temperature will be learned
-            temperature = torch.nn.Parameter(
-                torch.ones(1) * temperature, requires_grad=True
-            )
+            temperature = torch.nn.Parameter(torch.ones(1) * temperature, requires_grad=True)
             self.register_parameter("temperature", temperature)
         else:
             # temperature held constant after initialization
-            temperature = torch.nn.Parameter(
-                torch.ones(1) * temperature, requires_grad=False
-            )
+            temperature = torch.nn.Parameter(torch.ones(1) * temperature, requires_grad=False)
             self.register_buffer("temperature", temperature)
 
-        pos_x, pos_y = np.meshgrid(
-            np.linspace(-1.0, 1.0, self._in_w), np.linspace(-1.0, 1.0, self._in_h)
-        )
+        pos_x, pos_y = np.meshgrid(np.linspace(-1.0, 1.0, self._in_w), np.linspace(-1.0, 1.0, self._in_h))
         pos_x = torch.from_numpy(pos_x.reshape(1, self._in_h * self._in_w)).float()
         pos_y = torch.from_numpy(pos_y.reshape(1, self._in_h * self._in_w)).float()
         self.register_buffer("pos_x", pos_x)
@@ -589,22 +574,14 @@ class SpatialSoftmax(nn.Module):
 
         if self.output_variance:
             # treat attention as a distribution, and compute second-order statistics to return
-            expected_xx = torch.sum(
-                self.pos_x * self.pos_x * attention, dim=1, keepdim=True
-            )
-            expected_yy = torch.sum(
-                self.pos_y * self.pos_y * attention, dim=1, keepdim=True
-            )
-            expected_xy = torch.sum(
-                self.pos_x * self.pos_y * attention, dim=1, keepdim=True
-            )
+            expected_xx = torch.sum(self.pos_x * self.pos_x * attention, dim=1, keepdim=True)
+            expected_yy = torch.sum(self.pos_y * self.pos_y * attention, dim=1, keepdim=True)
+            expected_xy = torch.sum(self.pos_x * self.pos_y * attention, dim=1, keepdim=True)
             var_x = expected_xx - expected_x * expected_x
             var_y = expected_yy - expected_y * expected_y
             var_xy = expected_xy - expected_x * expected_y
             # stack to [B * K, 4] and then reshape to [B, K, 2, 2] where last 2 dims are covariance matrix
-            feature_covar = torch.cat([var_x, var_xy, var_xy, var_y], 1).reshape(
-                -1, self._num_kp, 2, 2
-            )
+            feature_covar = torch.cat([var_x, var_xy, var_xy, var_y], 1).reshape(-1, self._num_kp, 2, 2)
             feature_keypoints = (feature_keypoints, feature_covar)
 
         if isinstance(feature_keypoints, tuple):
@@ -662,10 +639,7 @@ class PositionalEncoding(nn.Module):
 
         # computing 1/n^(i/d) in log space and then exponentiating and fixing the shape
         div_term = (
-            torch.exp(
-                torch.arange(0, self.embed_dim, 2, device=x.device)
-                * (-math.log(10000.0) / self.embed_dim)
-            )
+            torch.exp(torch.arange(0, self.embed_dim, 2, device=x.device) * (-math.log(10000.0) / self.embed_dim))
             .unsqueeze(0)
             .unsqueeze(0)
             .repeat(x.shape[0], x.shape[1], 1)
@@ -687,9 +661,7 @@ class CausalSelfAttention(nn.Module):
     ) -> None:
         super(CausalSelfAttention, self).__init__()
 
-        assert (
-            embed_dim % num_heads == 0
-        ), "num_heads: {} does not divide embed_dim: {} exactly".format(
+        assert embed_dim % num_heads == 0, "num_heads: {} does not divide embed_dim: {} exactly".format(
             num_heads, embed_dim
         )
 
@@ -711,9 +683,7 @@ class CausalSelfAttention(nn.Module):
         self.nets["output"] = nn.Linear(self.embed_dim, self.embed_dim)
 
         # causal mask (ensures attention is only over previous inputs) - just a lower triangular matrix of 1s
-        mask = torch.tril(torch.ones(context_length, context_length)).view(
-            1, 1, context_length, context_length
-        )
+        mask = torch.tril(torch.ones(context_length, context_length)).view(1, 1, context_length, context_length)
         self.register_buffer("mask", mask)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

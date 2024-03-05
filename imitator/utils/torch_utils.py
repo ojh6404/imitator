@@ -65,9 +65,7 @@ def optimizer_from_optim_params(net_optim_params, net):
 
 
 def lr_scheduler_from_optim_params(net_optim_params, net, optimizer):
-    lr_scheduler_type = net_optim_params["learning_rate"].get(
-        "scheduler_type", "multistep"
-    )
+    lr_scheduler_type = net_optim_params["learning_rate"].get("scheduler_type", "multistep")
     epoch_schedule = net_optim_params["learning_rate"]["epoch_schedule"]
 
     lr_scheduler = None

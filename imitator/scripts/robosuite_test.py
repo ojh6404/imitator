@@ -2,7 +2,6 @@ import os
 import numpy as np
 import robosuite as suite
 
-import imitator.utils.tensor_utils as TensorUtils
 from imitator.models.policy_nets import MLPActor, RNNActor, TransformerActor
 from imitator.utils.obs_utils import FloatVectorModality
 import imitator.utils.file_utils as FileUtils
@@ -21,9 +20,7 @@ if __name__ == "__main__":
     dataset_path = (
         args.dataset
         if args.dataset
-        else os.path.join(
-            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
-        )
+        else os.path.join(FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5")
     )
     config = FileUtils.get_config_from_project_name(args.project_name)
     config = FileUtils.update_normlize_cfg(args.project_name, config)
@@ -31,11 +28,7 @@ if __name__ == "__main__":
     config.project_name = args.project_name
     config.dataset_path = dataset_path
 
-    image_obs_keys = [
-        obs_key
-        for obs_key in config.obs.keys()
-        if config.obs[obs_key].modality == "ImageModality"
-    ]
+    image_obs_keys = [obs_key for obs_key in config.obs.keys() if config.obs[obs_key].modality == "ImageModality"]
     for image_obs in image_obs_keys:
         if config.obs[image_obs].obs_encoder.model_path is None:
             if config.obs[image_obs].obs_encoder.trainable:
@@ -48,9 +41,7 @@ if __name__ == "__main__":
 
             config.obs[image_obs].obs_encoder.model_path = obs_default_model_path
             if not os.path.exists(obs_default_model_path):
-                raise ValueError(
-                    f"Model for {image_obs} does not exist. Please specify a model path in config file."
-                )
+                raise ValueError(f"Model for {image_obs} does not exist. Please specify a model path in config file.")
             else:
                 config.obs[image_obs].obs_encoder.model_path = obs_default_model_path
 

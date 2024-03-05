@@ -55,10 +55,12 @@ def get_config_folder(project_name):
     config_dir = os.path.join(project_dir, "config")
     return config_dir
 
+
 def get_data_folder(project_name):
     project_dir = get_project_folder(project_name)
     data_dir = os.path.join(project_dir, "data")
     return data_dir
+
 
 def get_config_file(project_name):
     config_dir = get_config_folder(project_name)
@@ -93,9 +95,7 @@ def update_normlize_cfg(project_name, config):
 
 def get_latest_runs(project_name, model_type):
     model_dir = get_log_folder(project_name)
-    model_type_dir = sort_names_by_number(
-        [name for name in os.listdir(model_dir) if name.startswith(model_type)]
-    )[-1]
+    model_type_dir = sort_names_by_number([name for name in os.listdir(model_dir) if name.startswith(model_type)])[-1]
     model_type_dir = os.path.join(model_dir, model_type_dir)
     return model_type_dir
 
@@ -107,9 +107,9 @@ def get_best_runs(project_name, model_type):
         print("Best model found: ", model_file)
         return model_file
     else:
-        model_file = sort_names_by_number(
-            [name for name in os.listdir(model_type_dir) if name.startswith(model_type)]
-        )[-1]
+        model_file = sort_names_by_number([name for name in os.listdir(model_type_dir) if name.startswith(model_type)])[
+            -1
+        ]
         model_file = os.path.join(model_type_dir, model_file)
         print("Best model not found, use the latest model: ", model_file)
         return model_file

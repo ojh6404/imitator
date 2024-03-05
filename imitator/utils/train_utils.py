@@ -6,15 +6,12 @@ import numpy as np
 import cv2
 import torch
 import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 
 import imitator.utils.tensor_utils as TensorUtils
 import imitator.utils.file_utils as FileUtils
 import imitator.utils.obs_utils as ObsUtils
 from imitator.utils.datasets import SequenceDataset
-from imitator.models.obs_nets import AutoEncoder, VariationalAutoEncoder
-
 
 # verify model
 @torch.no_grad()
@@ -51,9 +48,7 @@ def verify_image(model, dataset, obs_key="image", noise=False):
         add_noise = T.Compose(
             [
                 ObsUtils.AddGaussianNoise(mean=0.0, std=0.1, p=1.0),
-                ObsUtils.RGBShifter(
-                    r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=1.0
-                ),
+                ObsUtils.RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=1.0),
                 T.RandomApply(
                     [
                         T.RandomResizedCrop(
@@ -67,22 +62,14 @@ def verify_image(model, dataset, obs_key="image", noise=False):
                 ),
             ]
         )
-    test_image_tensor = TensorUtils.to_float(
-        TensorUtils.to_device(TensorUtils.to_tensor(test_image), device)
-    )
-    test_image_tensor = (
-        test_image_tensor.permute(0, 3, 1, 2).contiguous() / 255.0
-    )  # (1, C, H, W)
+    test_image_tensor = TensorUtils.to_float(TensorUtils.to_device(TensorUtils.to_tensor(test_image), device))
+    test_image_tensor = test_image_tensor.permute(0, 3, 1, 2).contiguous() / 255.0  # (1, C, H, W)
     if noise:
         test_image_tensor = add_noise(test_image_tensor)
-    test_image = (
-        test_image_tensor.detach().cpu().squeeze(0).permute(1, 2, 0).numpy() * 255.0
-    ).astype(np.uint8)
+    test_image = (test_image_tensor.detach().cpu().squeeze(0).permute(1, 2, 0).numpy() * 255.0).astype(np.uint8)
 
     x, z = model(test_image_tensor)
-    test_image_recon = (
-        TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0
-    ).astype(np.uint8)
+    test_image_recon = (TensorUtils.to_numpy(x.squeeze(0).permute(1, 2, 0)) * 255.0).astype(np.uint8)
     concat_image = ObsUtils.concatenate_image(test_image, test_image_recon)
     concat_image = cv2.cvtColor(concat_image, cv2.COLOR_RGB2BGR)
     print("Embedding shape: ", z.shape)
@@ -139,9 +126,7 @@ def save_and_log(model, writer, logger_dict):
     # TODO add more info for each model
 
     if epoch % 100 == 0:
-        print(
-            f"epoch: {epoch}, train loss: {train_loss:.5g}, valid loss: {valid_loss:.5g}"
-        )
+        print(f"epoch: {epoch}, train loss: {train_loss:.5g}, valid loss: {valid_loss:.5g}")
         torch.save(
             model.state_dict(),
             os.path.join(output_dir, model_type + "_model_" + str(epoch) + ".pth"),

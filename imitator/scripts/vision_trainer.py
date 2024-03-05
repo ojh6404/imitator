@@ -26,9 +26,7 @@ def validate(model, dataloader, obs_key, obs_dim, data_augmentation=False):
     device = next(model.parameters()).device
     valid_loss = 0.0
     for batch in dataloader:
-        batch_image = TensorUtils.to_device(batch["obs"][obs_key], device).reshape(
-            -1, *obs_dim
-        )
+        batch_image = TensorUtils.to_device(batch["obs"][obs_key], device).reshape(-1, *obs_dim)
         batch_image = batch_image.permute(0, 3, 1, 2)  # (B, C, H, W)
         batch_image = batch_image.contiguous().float() / 255.0
         if data_augmentation:
@@ -36,9 +34,7 @@ def validate(model, dataloader, obs_key, obs_dim, data_augmentation=False):
         ground_truth = batch_image.detach().clone()
         if data_augmentation:
             batch_image = transform(batch_image).contiguous()
-        valid_info = model.forward_train(
-            {"obs": batch_image, "ground_truth": ground_truth}
-        )
+        valid_info = model.forward_train({"obs": batch_image, "ground_truth": ground_truth})
         _valid_loss = valid_info["loss"]
         valid_loss += _valid_loss.item()
     valid_loss /= len(dataloader.dataset)
@@ -63,16 +59,12 @@ def main(args):
     config.dataset.hdf5_path = (
         args.dataset
         if args.dataset
-        else os.path.join(
-            FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5"
-        )
+        else os.path.join(FileUtils.get_project_folder(args.project_name), "data/dataset.hdf5")
     )
     config.dataset.seq_length = config.dataset.frame_stack = 1
     model_type = config.obs[obs_key].obs_encoder.model
     model = eval(model_type)(**config.obs[obs_key].obs_encoder.model_kwargs).to(device)
-    train_dataloader, valid_dataloader = TrainUtils.build_dataloader(
-        [obs_key], config.dataset, args.batch_size
-    )
+    train_dataloader, valid_dataloader = TrainUtils.build_dataloader([obs_key], config.dataset, args.batch_size)
 
     print("\n================ Config ================")
     FileUtils.print_config(config)
@@ -91,9 +83,7 @@ def main(args):
             [
                 ObsUtils.AddGaussianNoise(mean=0.0, std=0.1, p=0.2),
                 # RGBShifter(r_shift_limit=0.2, g_shift_limit=0.2, b_shift_limit=0.2, p=1.0),
-                ObsUtils.RGBShifter(
-                    r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=0.2
-                ),
+                ObsUtils.RGBShifter(r_shift_limit=0.1, g_shift_limit=0.1, b_shift_limit=0.1, p=0.2),
                 # T.RandomApply([T.RandomResizedCrop(size=config.obs[obs_key].obs_encoder.input_dim[:2], scale=(0.8, 1.0), ratio=(0.8, 1.2), antialias=True)], p=0.5),
                 # T.RandomApply([T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1)], p=1.0),
             ]
@@ -115,19 +105,13 @@ def main(args):
         if args.checkpoint:
             model.load_state_dict(torch.load(args.checkpoint))
         else:
-            model.load_state_dict(
-                torch.load(FileUtils.get_best_runs(args.project_name, model_type))
-            )
+            model.load_state_dict(torch.load(FileUtils.get_best_runs(args.project_name, model_type)))
     elif args.verify:
         if args.checkpoint:
             model.load_state_dict(torch.load(args.checkpoint))
         else:
-            model.load_state_dict(
-                torch.load(FileUtils.get_best_runs(args.project_name, model_type))
-            )
-        TrainUtils.verify_image(
-            model, valid_dataloader.dataset, obs_key=obs_key, noise=False
-        )
+            model.load_state_dict(torch.load(FileUtils.get_best_runs(args.project_name, model_type)))
+        TrainUtils.verify_image(model, valid_dataloader.dataset, obs_key=obs_key, noise=False)
         return
 
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
@@ -218,29 +202,19 @@ def main(args):
 
     # load model for test
     model = eval(model_type)(**config.obs[obs_key].obs_encoder.model_kwargs).to(device)
-    model.load_state_dict(
-        torch.load(os.path.join(output_dir, model_type + "_model_best.pth"))
-    )
-    TrainUtils.verify_image(
-        model, valid_dataloader.dataset, obs_key=obs_key, noise=False
-    )
+    model.load_state_dict(torch.load(os.path.join(output_dir, model_type + "_model_best.pth")))
+    TrainUtils.verify_image(model, valid_dataloader.dataset, obs_key=obs_key, noise=False)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-pn", "--project_name", type=str, required=True, help="project name"
-    )
+    parser.add_argument("-pn", "--project_name", type=str, required=True, help="project name")
     parser.add_argument("-d", "--dataset", type=str, help="path to hdf5 dataset")
     parser.add_argument("-e", "--num_epochs", type=int, default=3000, help="num epochs")
     parser.add_argument("-b", "--batch_size", type=int, default=512, help="batch size")
     parser.add_argument("-obs", "--obs_key", type=str, default="image")
-    parser.add_argument(
-        "-r", "--resume", action="store_true", default=False, help="resume training"
-    )
-    parser.add_argument(
-        "-v", "--verify", action="store_true", default=False, help="verify mode"
-    )
+    parser.add_argument("-r", "--resume", action="store_true", default=False, help="resume training")
+    parser.add_argument("-v", "--verify", action="store_true", default=False, help="verify mode")
     parser.add_argument("--device", type=str, default="cuda:0", help="device")
     parser.add_argument("--seed", type=int, default=None, help="seed")
     parser.add_argument("-ckpt", "--checkpoint", type=str, help="checkpoint path")

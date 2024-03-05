@@ -2,7 +2,6 @@
 
 
 import rospy
-import rosbag
 import os
 import time
 
