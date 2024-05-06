@@ -12,6 +12,7 @@ import numpy as np
 import cv2
 
 from imitator.utils import file_utils as FileUtils
+from imitator.utils.obs_utils import get_normalize_params
 
 try:
     import robosuite
