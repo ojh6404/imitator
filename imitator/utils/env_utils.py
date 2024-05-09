@@ -5,14 +5,16 @@ from typing import Any, Dict
 from collections import OrderedDict
 import yaml
 import importlib
-import jax
 
 import h5py
 import numpy as np
 import cv2
+import torch
 
+from imitator.utils import tensor_utils as TensorUtils
 from imitator.utils import file_utils as FileUtils
 from imitator.utils.obs_utils import get_normalize_params
+from imitator.models.policy_nets import MLPActor, RNNActor, TransformerActor
 
 try:
     import robosuite
@@ -63,78 +65,49 @@ class RolloutBase(ABC):
     def load_model(self, cfg: Dict[str, Any]) -> None:
         # TODO: seperate torch and jax for now, will convert to jax later
         print("Loading {}".format(cfg.network.policy.model))
-        if cfg.network.policy.model in [
-            "MLPActor",
-            "RNNActor",
-            "TransformerActor",
-        ]:  # torch
-            self.backend = "torch"
 
-            torch = importlib.import_module("torch")
-
-            from imitator.utils import tensor_utils as TensorUtils
-            from imitator.models.policy_nets import MLPActor, RNNActor, TransformerActor
-
-            self.actor_type = eval(cfg.network.policy.model)
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            normalize = True  # TODO
-            if normalize:
-                normalizer_cfg = FileUtils.get_normalize_cfg(self.project_name)
-                action_mean, action_std = get_normalize_params(normalizer_cfg.actions.min, normalizer_cfg.actions.max)
-                action_mean, action_std = (
-                    torch.Tensor(action_mean).to(self.device).float(),
-                    torch.Tensor(action_std).to(self.device).float(),
-                )
-                cfg.actions.update(
+        self.actor_type = eval(cfg.network.policy.model)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        normalize = True  # TODO
+        if normalize:
+            normalizer_cfg = FileUtils.get_normalize_cfg(self.project_name)
+            action_mean, action_std = get_normalize_params(normalizer_cfg.actions.min, normalizer_cfg.actions.max)
+            action_mean, action_std = (
+                torch.Tensor(action_mean).to(self.device).float(),
+                torch.Tensor(action_std).to(self.device).float(),
+            )
+            cfg.actions.update(
+                {
+                    "max": normalizer_cfg.actions.max,
+                    "min": normalizer_cfg.actions.min,
+                }
+            )
+            for obs in normalizer_cfg["obs"]:
+                cfg.obs[obs].update(
                     {
-                        "max": normalizer_cfg.actions.max,
-                        "min": normalizer_cfg.actions.min,
+                        "max": normalizer_cfg.obs[obs].max,
+                        "min": normalizer_cfg.obs[obs].min,
                     }
                 )
-                for obs in normalizer_cfg["obs"]:
-                    cfg.obs[obs].update(
-                        {
-                            "max": normalizer_cfg.obs[obs].max,
-                            "min": normalizer_cfg.obs[obs].min,
-                        }
-                    )
-            else:
-                action_mean, action_std = 0.0, 1.0
-            if self.actor_type == RNNActor:
-                self.rnn_horizon = cfg.network.policy.rnn.rnn_horizon
-            elif self.actor_type == TransformerActor:
-                self.stacked_obs = OrderedDict()
-                self.context_length = cfg.network.policy.transformer.context_length
-            self.model = self.actor_type(cfg)
-            self.model.load_state_dict(torch.load(cfg.network.policy.checkpoint))
-            self.model.eval()
-            self.model.to(self.device)
-            self.image_encoder = OrderedDict()
-            self.image_decoder = OrderedDict()
+        else:
+            action_mean, action_std = 0.0, 1.0
+        if self.actor_type == RNNActor:
+            self.rnn_horizon = cfg.network.policy.rnn.rnn_horizon
+        elif self.actor_type == TransformerActor:
+            self.stacked_obs = OrderedDict()
+            self.context_length = cfg.network.policy.transformer.context_length
+        self.model = self.actor_type(cfg)
+        self.model.load_state_dict(torch.load(cfg.network.policy.checkpoint))
+        self.model.eval()
+        self.model.to(self.device)
+        self.image_encoder = OrderedDict()
+        self.image_decoder = OrderedDict()
 
-            for image_obs in self.image_obs:
-                self.image_encoder[image_obs] = self.model.nets["obs_encoder"].nets[image_obs]
-                has_decoder = cfg.obs[image_obs].obs_encoder.has_decoder
-                if has_decoder:
-                    self.image_decoder[image_obs] = self.model.nets["obs_encoder"].nets[image_obs].nets["decoder"]
-        elif cfg.network.policy.model == "OctoActor":
-            self.backend = "jax"
-            from octo.model.octo_model import OctoModel
-
-            self.actor_type = OctoModel
-            self.model = self.actor_type.load_pretrained(cfg.checkpoint_path)
-            # TODO
-            self.act_stats = self.model.dataset_statistics["action"]
-            self.proprio_stats = self.model.dataset_statistics["proprio"]
-            self.policy_fn = jax.jit(self.model.sample_actions)
-
-            self.instruction = self.cfg.task.language_instruction
-            self.task = self.model.create_tasks(texts=[self.instruction])
-            self.actions = None
-            self.obs_dict = None
-
-            self.index = 0
-            self.update_interval = 1
+        for image_obs in self.image_obs:
+            self.image_encoder[image_obs] = self.model.nets["obs_encoder"].nets[image_obs]
+            has_decoder = cfg.obs[image_obs].obs_encoder.has_decoder
+            if has_decoder:
+                self.image_decoder[image_obs] = self.model.nets["obs_encoder"].nets[image_obs].nets["decoder"]
         print("{} loaded".format(cfg.network.policy.model))
 
     def frame_stack(self, obs: Dict[str, Any]) -> Dict[str, Any]:
@@ -164,40 +137,19 @@ class RolloutBase(ABC):
 
     def rollout(self, obs: Dict[str, Any]) -> None:
         obs = self.process_obs(obs)
-        if self.backend == "torch":
-            batch = dict()
-            obs = TensorUtils.to_batch(obs)  # [1, D], if TransformerActor, [1, T, D]
-            batch["obs"] = obs
-            batch["actions"] = None  # for dummy
-            if self.cfg.network.policy.model == "RNNActor":
-                if self.running_cnt % self.rnn_horizon == 0:
-                    self.rnn_state = self.model.get_rnn_init_state(batch_size=1, device=self.device)
-                with torch.no_grad():
-                    pred_action, self.rnn_state = self.model.get_action(batch, rnn_state=self.rnn_state)
-            else:
-                with torch.no_grad():
-                    pred_action = self.model.get_action(batch)
-            pred_action = TensorUtils.to_numpy(pred_action)[0]
-        elif self.backend == "jax":
-            proprio = obs["proprio"]
-            proprio = (proprio - self.proprio_stats["mean"]) / (self.proprio_stats["std"] + 1e-8)
-            head_image = obs["head_image"]
-            # obs = TensorUtils.to_sequence(TensorUtils.to_batch(obs)) # [1, 1, D]
-
-            # TODO
-            obs = {
-                "image_primary": head_image[None, None],
-                "proprio": proprio[None, None],
-                "pad_mask": np.asarray([[True]]),
-            }
-
-            if self.running_cnt % self.update_interval == 0:
-                actions = self.policy_fn(jax.tree_map(lambda x: x, obs), self.task, rng=jax.random.PRNGKey(0))
-                self.actions = actions
-
-            idx = self.index % self.update_interval
-            action = self.actions[0, idx] * self.act_stats["std"] + self.act_stats["mean"]
-            pred_action = np.clip(action, self.act_stats["min"], self.act_stats["max"])
+        batch = dict()
+        obs = TensorUtils.to_batch(obs)  # [1, D], if TransformerActor, [1, T, D]
+        batch["obs"] = obs
+        batch["actions"] = None  # for dummy
+        if self.cfg.network.policy.model == "RNNActor":
+            if self.running_cnt % self.rnn_horizon == 0:
+                self.rnn_state = self.model.get_rnn_init_state(batch_size=1, device=self.device)
+            with torch.no_grad():
+                pred_action, self.rnn_state = self.model.get_action(batch, rnn_state=self.rnn_state)
+        else:
+            with torch.no_grad():
+                pred_action = self.model.get_action(batch)
+        pred_action = TensorUtils.to_numpy(pred_action)[0]
 
         if self.render_image:
             self.render(obs)
