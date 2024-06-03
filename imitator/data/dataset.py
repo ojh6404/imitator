@@ -15,7 +15,7 @@ from imitator.data.utils.data_utils import (
     allocate_threads,
     get_dataset_statistics,
     NormalizationType,
-    normalize_action_and_proprio,
+    normalize_action_and_state,
     pprint_data_mixture,
     tree_map,
 )
@@ -33,7 +33,7 @@ def apply_trajectory_transforms(
     subsample_length: Optional[int] = None,
     skip_unlabeled: bool = False,
     max_action: Optional[float] = None,
-    max_proprio: Optional[float] = None,
+    max_state: Optional[float] = None,
     task_augment_strategy: Optional[str] = None,
     task_augment_kwargs: dict = {},
     num_parallel_calls: int = tf.data.AUTOTUNE,
@@ -60,7 +60,7 @@ def apply_trajectory_transforms(
         skip_unlabeled (bool, optional): Whether to skip trajectories with no language labels.
         max_action: (float, optional): If provided, trajectories in which *any* action dimension
             of *any* transition has an absolute value larger than this will be skipped.
-        max_proprio: (float, optional): If provided, trajectories in which *any* proprio dimension
+        max_state: (float, optional): If provided, trajectories in which *any* state dimension
             of *any* transition has an absolute value larger than this will be skipped.
         task_augment_strategy (str, optional): The task augmentation strategy to use, or None for no task
             augmentation. See `task_augmentation.py`.
@@ -82,10 +82,10 @@ def apply_trajectory_transforms(
             lambda x: tf.math.reduce_all(tf.math.abs(x["action"]) <= max_action)
         )
 
-    if max_proprio is not None and "proprio" in dataset.element_spec["observation"]:
+    if max_state is not None and "state" in dataset.element_spec["observation"]:
         dataset = dataset.filter(
             lambda x: tf.math.reduce_all(
-                tf.math.abs(x["observation"]["proprio"]) <= max_proprio
+                tf.math.abs(x["observation"]["state"]) <= max_state
             )
         )
 
@@ -223,7 +223,7 @@ def make_dataset_from_rlds(
     depth_obs_keys: Mapping[str, Optional[str]] = {},
     state_obs_keys: Sequence[Optional[str]] = (),
     language_key: Optional[str] = None,
-    action_proprio_normalization_type: NormalizationType = NormalizationType.NORMAL,
+    action_state_normalization_type: NormalizationType = NormalizationType.NORMAL,
     dataset_statistics: Optional[Union[dict, str]] = None,
     absolute_action_mask: Optional[Sequence[bool]] = None,
     action_normalization_mask: Optional[Sequence[bool]] = None,
@@ -247,8 +247,8 @@ def make_dataset_from_rlds(
     "image_primary", "image_secondary", and "image_wrist", where "image_primary" corresponds to "workspace",
     "image_secondary" is a padding image, and "image_wrist" corresponds to "wrist".
 
-    `state_obs_keys` is a list of 1-dimensional proprioceptive keys to concatenate into a single array, which
-    will be placed in the "proprio" key of the "observation" dict. A single padding element (zero) will be
+    `state_obs_keys` is a list of 1-dimensional state keys to concatenate into a single array, which
+    will be placed in the "state" key of the "observation" dict. A single padding element (zero) will be
     inserted for each None entry.
 
     The dataset will also include a "task" dict. If `language_key` is provided, then the "task" dict will
@@ -268,16 +268,16 @@ def make_dataset_from_rlds(
             string).
         depth_obs_keys (Mapping[str, str|None]): Same as `image_obs_keys`, but for depth images. Keys will be
             prefixed with "depth_" instead of "image_".
-        state_obs_keys (Sequence[str|None]): List of 1-dimensional proprioception keys to be extracted from
-            the "observation" dict, concatenated, and mapped to "proprio". Inserts 1 element of padding (zero) for
+        state_obs_keys (Sequence[str|None]): List of 1-dimensional state keys to be extracted from
+            the "observation" dict, concatenated, and mapped to "state". Inserts 1 element of padding (zero) for
             each None entry.
         language_key (str, optional): If provided, the "task" dict will contain the key
             "language_instruction", extracted from `traj[language_key]`.
-        action_proprio_normalization_type (str, optional): The type of normalization to perform on the action,
-            proprio, or both. Can be "normal" (mean 0, std 1) or "bounds" (normalized to [-1, 1]).
+        action_state_normalization_type (str, optional): The type of normalization to perform on the action,
+            state, or both. Can be "normal" (mean 0, std 1) or "bounds" (normalized to [-1, 1]).
         dataset_statistics: (dict|str, optional): dict (or path to JSON file) that contains dataset statistics
-            for normalization. If `action_proprio_normalization_type` is "normal", this should contain "mean" and
-            "std" keys. If `action_proprio_normalization_type` is "bounds", this should contain "min" and "max"
+            for normalization. If `action_state_normalization_type` is "normal", this should contain "mean" and
+            "std" keys. If `action_state_normalization_type` is "bounds", this should contain "min" and "max"
             keys. May also provide "num_transitions" and "num_trajectories" keys for downstream usage (e.g., for
             `make_interleaved_dataset`). If not provided, the statistics will be computed on the fly.
         absolute_action_mask (Sequence[bool], optional): By default, all action dimensions are assumed to be
@@ -299,7 +299,7 @@ def make_dataset_from_rlds(
         - observation:
             - image_{name1, name2, ...} # RGB image observations
             - depth_{name1, name2, ...} # depth image observations
-            - proprio                   # 1-dimensional array of proprioceptive observations
+            - state                   # 1-dimensional array of state observations
             - timestep                  # timestep of each frame
         - task:
             - language_instruction      # language instruction, present if `language_key` is provided
@@ -321,7 +321,7 @@ def make_dataset_from_rlds(
                 "Did you write a `standardize_fn`?"
             )
 
-        # extracts images, depth images and proprio from the "observation" dict
+        # extracts images, depth images and state from the "observation" dict
         traj_len = tf.shape(traj["action"])[0]
         old_obs = traj["observation"]
         new_obs = {}
@@ -338,7 +338,7 @@ def make_dataset_from_rlds(
                 new_obs[f"depth_{new}"] = old_obs[old]
 
         if state_obs_keys:
-            new_obs["proprio"] = tf.concat(
+            new_obs["state"] = tf.concat(
                 [
                     (
                         tf.zeros((traj_len, 1), dtype=tf.float32)  # padding
@@ -435,9 +435,9 @@ def make_dataset_from_rlds(
     dataset = dataset.traj_map(restructure, num_parallel_calls)
     dataset = dataset.traj_map(
         partial(
-            normalize_action_and_proprio,
+            normalize_action_and_state,
             metadata=dataset_statistics,
-            normalization_type=action_proprio_normalization_type,
+            normalization_type=action_state_normalization_type,
             skip_keys=norm_skip_keys,
         ),
         num_parallel_calls,

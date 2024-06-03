@@ -15,9 +15,9 @@ def make_oxe_dataset_kwargs(
     data_dir: str,
     load_camera_views: Sequence[str] = ("primary",),
     load_depth: bool = False,
-    load_proprio: bool = True,
+    load_state: bool = True,
     load_language: bool = True,
-    action_proprio_normalization_type: NormalizationType = NormalizationType.NORMAL,
+    action_state_normalization_type: NormalizationType = NormalizationType.NORMAL,
 ) -> Dict[str, Any]:
     """Generates dataset kwargs for a given dataset from Open X-Embodiment. The returned kwargs can be passed
     directly into `octo.data.dataset.make_dataset_from_rlds`.
@@ -27,9 +27,9 @@ def make_oxe_dataset_kwargs(
         data_dir: Base data directory that contains the dataset.
         load_camera_views: Which views to load. See `oxe_dataset_configs.py` for available views.
         load_depth: If True, loads corresponding depth channels for each RGB channel.
-        load_proprio: If True, loads proprioceptive information.
+        load_state: If True, loads state information.
         load_language: If True, loads language instructions.
-        action_proprio_normalization_type: Normalization type to use for proprioceptive actions.
+        action_state_normalization_type: Normalization type to use for state actions.
     """
     dataset_kwargs = copy.deepcopy(OXE_DATASET_CONFIGS[name])
     if dataset_kwargs["action_encoding"] is not ActionEncoding.EEF_POS:
@@ -61,14 +61,14 @@ def make_oxe_dataset_kwargs(
 
     if not load_depth:
         dataset_kwargs.pop("depth_obs_keys")
-    if not load_proprio:
+    if not load_state:
         dataset_kwargs.pop("state_obs_keys")
 
     if load_language:
         dataset_kwargs["language_key"] = "language_instruction"
 
-    dataset_kwargs["action_proprio_normalization_type"] = (
-        action_proprio_normalization_type
+    dataset_kwargs["action_state_normalization_type"] = (
+        action_state_normalization_type
     )
 
     del dataset_kwargs["state_encoding"]
@@ -84,9 +84,9 @@ def make_oxe_dataset_kwargs_and_weights(
     data_dir: str,
     load_camera_views: Sequence[str] = ("primary",),
     load_depth: bool = False,
-    load_proprio: bool = True,
+    load_state: bool = True,
     load_language: bool = True,
-    action_proprio_normalization_type: NormalizationType = NormalizationType.NORMAL,
+    action_state_normalization_type: NormalizationType = NormalizationType.NORMAL,
 ) -> Tuple[Dict[str, Any], List[float]]:
     """
     Generates dataset kwargs for a given dataset mix from the Open X-Embodiment dataset. The returned kwargs
@@ -98,9 +98,9 @@ def make_oxe_dataset_kwargs_and_weights(
         data_dir: Base data directory that contains the datasets.
         load_camera_views: Which views to load. See `oxe_dataset_configs.py` for available views.
         load_depth: If True, loads corresponding depth channels for each RGB channel.
-        load_proprio: If True, loads proprioceptive information.
+        load_state: If True, loads state information.
         load_language: If True, loads language instructions.
-        action_proprio_normalization_type: Normalization type to use for proprioceptive actions.
+        action_state_normalization_type: Normalization type to use for state actions.
     Returns:
         Tuple of (dataset_kwargs_list, sampling weights).
     """
@@ -125,9 +125,9 @@ def make_oxe_dataset_kwargs_and_weights(
                     data_dir,
                     load_camera_views,
                     load_depth,
-                    load_proprio,
+                    load_state,
                     load_language,
-                    action_proprio_normalization_type,
+                    action_state_normalization_type,
                 )
             )
             weights.append(weight)

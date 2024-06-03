@@ -31,7 +31,7 @@ def tree_merge(*trees: dict) -> dict:
 
 
 class NormalizationType(str, Enum):
-    """Defines supported normalization schemes for action and proprio."""
+    """Defines supported normalization schemes for action and state."""
 
     NORMAL = "normal"  # normalize to mean 0, std 1
     BOUNDS = "bounds"  # normalize to [-1, 1]
@@ -83,7 +83,7 @@ def get_dataset_statistics(
 ) -> dict:
     """Either computes the statistics of a dataset or loads them from a cache file if this function has been
     called before with the same `hash_dependencies`. Currently, the statistics include the min/max/mean/std of
-    the actions and proprio as well as the number of transitions and trajectories in the dataset.
+    the actions and state as well as the number of transitions and trajectories in the dataset.
     """
     unique_hash = hashlib.sha256(
         "".join(hash_dependencies).encode("utf-8"),
@@ -121,9 +121,9 @@ def get_dataset_statistics(
     dataset = dataset.traj_map(
         lambda traj: {
             "action": traj["action"],
-            "proprio": (
-                traj["observation"]["proprio"]
-                if "proprio" in traj["observation"]
+            "state": (
+                traj["observation"]["state"]
+                if "state" in traj["observation"]
                 else tf.zeros_like(traj["action"])
             ),
         }
@@ -138,7 +138,7 @@ def get_dataset_statistics(
         "once for each dataset."
     )
     actions = []
-    proprios = []
+    states = []
     num_transitions = 0
     num_trajectories = 0
     for traj in tqdm.tqdm(
@@ -146,11 +146,11 @@ def get_dataset_statistics(
         total=cardinality if cardinality != tf.data.UNKNOWN_CARDINALITY else None,
     ):
         actions.append(traj["action"])
-        proprios.append(traj["proprio"])
+        states.append(traj["state"])
         num_transitions += traj["action"].shape[0]
         num_trajectories += 1
     actions = np.concatenate(actions)
-    proprios = np.concatenate(proprios)
+    states = np.concatenate(states)
     metadata = {
         "action": {
             "mean": actions.mean(0).tolist(),
@@ -158,11 +158,11 @@ def get_dataset_statistics(
             "max": actions.max(0).tolist(),
             "min": actions.min(0).tolist(),
         },
-        "proprio": {
-            "mean": proprios.mean(0).tolist(),
-            "std": proprios.std(0).tolist(),
-            "max": proprios.max(0).tolist(),
-            "min": proprios.min(0).tolist(),
+        "state": {
+            "mean": states.mean(0).tolist(),
+            "std": states.std(0).tolist(),
+            "max": states.max(0).tolist(),
+            "min": states.min(0).tolist(),
         },
         "num_transitions": num_transitions,
         "num_trajectories": num_trajectories,
@@ -180,6 +180,7 @@ def get_dataset_statistics(
         with open(local_path, "w") as f:
             json.dump(metadata, f)
 
+
     return metadata
 
 
@@ -187,7 +188,7 @@ def combine_dataset_statistics(
     all_dataset_statistics: Sequence[dict],
 ) -> dict:
     """Merges dataset statistics from multiple datasets."""
-    merge_stat_keys = ["action", "proprio"]
+    merge_stat_keys = ["action", "state"]
 
     num_trajectories = [stat["num_trajectories"] for stat in all_dataset_statistics]
     num_transitions = [stat["num_transitions"] for stat in all_dataset_statistics]
@@ -231,14 +232,14 @@ def combine_dataset_statistics(
     return combined_dataset_statistics
 
 
-def normalize_action_and_proprio(
+def normalize_action_and_state(
     traj: dict, metadata: dict, normalization_type: NormalizationType, skip_keys=None
 ):
-    """Normalizes the action and proprio fields of a trajectory using the given metadata."""
+    """Normalizes the action and state fields of a trajectory using the given metadata."""
     # maps keys of `metadata` to corresponding keys in `traj`
     keys_to_normalize = {
         "action": "action",
-        "proprio": "observation/proprio",
+        "state": "observation/state",
     }
     if skip_keys is not None:
         for skip_key in skip_keys:
@@ -392,10 +393,10 @@ def invert_gripper_actions(actions: tf.Tensor):
 
 
 def relabel_actions(traj: Dict[str, Any]) -> Dict[str, Any]:
-    """Relabels the actions to use the reached proprio instead. Discards the last timestep of the
+    """Relabels the actions to use the reached state instead. Discards the last timestep of the
     trajectory (since we don't have a next state to compute the action.)
     """
-    # relabel the first 6 action dims (xyz position, xyz rotation) using the reached proprio
+    # relabel the first 6 action dims (xyz position, xyz rotation) using the reached state
     movement_actions = (
         traj["observation"]["state"][1:, :6] - traj["observation"]["state"][:-1, :6]
     )

@@ -13,7 +13,8 @@ FUTURE_ACTION_WINDOW_SIZE = 10
 BATCH_SIZE = 128
 DATASET_NAME = "imitator_dataset"
 DATA_DIR = os.path.expanduser("~/tensorflow_datasets")
-STATE_OBS_KEYS = ["robot0_eef_pos", "robot0_eef_quat", "robot0_gripper_qpos", "object"]
+# STATE_OBS_KEYS = ["robot0_eef_pos", "robot0_eef_quat", "robot0_gripper_qpos", "object"]
+STATE_OBS_KEYS = ["robot_state", "joint_state"]
 ABSOLUTE_ACTION_MASK = [True] * 7
 
 if __name__ == "__main__":
@@ -73,12 +74,12 @@ if __name__ == "__main__":
             name=DATASET_NAME,
             data_dir=DATA_DIR,
             image_obs_keys={
-                "primary": "agentview_image",
-                "wrist": "robot0_eye_in_hand_image",
+                "primary": "head_image",
+                "wrist": None,
             },
             state_obs_keys=STATE_OBS_KEYS,
             # language_key="language_instruction",
-            action_proprio_normalization_type=NormalizationType.BOUNDS,  # or NORMAL
+            action_state_normalization_type=NormalizationType.BOUNDS,  # or NORMAL
             absolute_action_mask=ABSOLUTE_ACTION_MASK,
         ),
         traj_transform_kwargs=dict(
@@ -114,15 +115,15 @@ if __name__ == "__main__":
     batch = next(train_data_iter)
     print("Batch keys: ", batch.keys())
     print("Batch observation keys: ", batch["observation"].keys())
-    print("State shapes: ", batch["observation"]["proprio"].shape)
+    print("State shapes: ", batch["observation"]["state"].shape)
     print("Action shapes: ", batch["action"].shape)
 
     action_mean = dataset.dataset_statistics["action"]["mean"]
     action_std = dataset.dataset_statistics["action"]["std"]
-    obs_mean = dataset.dataset_statistics["proprio"]["mean"]
-    obs_std = dataset.dataset_statistics["proprio"]["std"]
+    obs_mean = dataset.dataset_statistics["state"]["mean"]
+    obs_std = dataset.dataset_statistics["state"]["std"]
 
-    first_obs = batch["observation"]["proprio"][0]
+    first_obs = batch["observation"]["state"][0]
     print("First observation: ", first_obs)
     first_action = batch["action"][0]
     print("First action: ", first_action)
