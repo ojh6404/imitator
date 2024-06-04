@@ -1,38 +1,38 @@
 #!/usr/bin/env python
 
 import os
+import time
 import numpy as np
 import cv2
 import jax
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from absl import app, flags
+from functools import partial
+
 
 from octo.model.octo_model import OctoModel
 from octo.utils.jax_utils import initialize_compilation_cache
+from octo.utils.train_callbacks import supply_rng
+
+from imitator.utils.env.robomimic_env import RoboMimicEnv
 from imitator.utils.file_utils import (
     get_models_folder,
     get_data_folder,
     get_config_from_project_name,
 )
-from imitator.utils.env.robomimic_env import RoboMimicEnv
-from imitator.utils.env.gym_wrapper import (
+
+from imitator.utils.env.gym_wrappers import (
     HistoryWrapper,
     TemporalEnsembleWrapper,
     ResizeImageWrapper,
     ProcessObsWrapper,
-    NormalizeProprio,
-    UnnormalizeAction,
+    NormalizeState,
 )
 
 initialize_compilation_cache()
 # prevent tensorflow from using GPU memory since it's only used for data loading
 tf.config.set_visible_devices([], "GPU")
-
-# VARIABLES
-PREDICTION_HORIZON = 10
-WINDOW_SIZE = 2
-
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("project_name", None, "Project name")
@@ -99,8 +99,6 @@ def main(argv):
     ################################
 
     model = OctoModel.load_pretrained(FLAGS.model_dir)
-    act_stats = model.dataset_statistics["action"]
-    proprio_stats = model.dataset_statistics["proprio"]
     language_instruction = cfg.task.get("language_instruction", "Dummy Instruction")
     image_goals = {}  # set goals for images
     if primary_img_key is not None:
@@ -108,7 +106,12 @@ def main(argv):
     if wrist_img_key is not None:
         image_goals["image_wrist"] = wrist_goal_image[None]
     task = model.create_tasks(texts=[language_instruction], goals=image_goals)
-    policy_fn = jax.jit(model.sample_actions)
+    policy_fn = supply_rng(
+        partial(
+            jax.jit(model.sample_actions),
+            unnormalization_statistics=model.dataset_statistics["action"],
+        ),
+    )
 
     ############################
     #    Create environment    #
@@ -129,20 +132,16 @@ def main(argv):
             "wrist": wrist_img_key,
         },
     )  # process obs
-
+    env = NormalizeState(env, model.dataset_statistics)
     env = ResizeImageWrapper(
         env,
         resize_size={
             "primary": tuple(cfg.obs[primary_img_key].dim[:2]),
             "wrist": tuple(cfg.obs[wrist_img_key].dim[:2]),
         },
-    )  # resize images
-    env = NormalizeProprio(env, proprio_stats)  # normalize proprio
-    env = UnnormalizeAction(env, act_stats)  # unnormalize actions
-    env = TemporalEnsembleWrapper(
-        env, pred_horizon=PREDICTION_HORIZON, exp_weight=0.0
-    )  # action chunking and temporal ensemble
-    env = HistoryWrapper(env, horizon=WINDOW_SIZE)  # window size
+    )
+    env = HistoryWrapper(env, horizon=cfg.actions.history)
+    env = TemporalEnsembleWrapper(env, pred_horizon=cfg.actions.horizon, exp_weight=0.0)
 
     ##############################
     # Rollout in the environment #
@@ -151,16 +150,17 @@ def main(argv):
     for _ in range(10):  # 10 episodes
         obs, _ = env.reset()
         for _ in range(200):  # 200 steps
-            actions = policy_fn(
-                jax.tree.map(lambda x: x[None], obs), task, rng=jax.random.PRNGKey(0)
-            )[
-                0
-            ]  # remove batch dim
+            # model returns actions of shape [batch, pred_horizon, action_dim] -- remove batch
+            start = time.time()
+            actions = policy_fn(jax.tree_map(lambda x: x[None], obs), task)
+            actions = actions[0]
+            print(f"Time taken: {time.time() - start}")
 
+            # step env -- info contains full "chunk" of observations for logging
+            # obs only contains observation for final step of chunk
             obs, _, done, trunc, _ = env.step(actions)
             if done or trunc:
                 continue
-
 
 if __name__ == "__main__":
     app.run(main)

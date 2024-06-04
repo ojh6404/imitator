@@ -1,6 +1,5 @@
 import datetime
 from functools import partial
-import imp
 import os
 
 from absl import app, flags, logging
@@ -14,18 +13,18 @@ import tensorflow as tf
 import tqdm
 import wandb
 
-from octo.data.dataset import make_single_dataset
+from imitator.data.dataset import make_single_dataset
 from octo.model.octo_model import OctoModel
-from octo.utils.jax_utils import initialize_compilation_cache
 from octo.model.components.action_heads import L1ActionHead
+from imitator.utils.jax_utils import initialize_compilation_cache
 from octo.utils.spec import ModuleSpec
-from octo.utils.train_callbacks import (
+from imitator.utils.train_callbacks import (
     RolloutVisualizationCallback,
     SaveCallback,
     ValidationCallback,
     VisualizationCallback,
 )
-from octo.utils.train_utils import (
+from imitator.utils.train_utils import (
     check_config_diff,
     create_optimizer,
     format_name_with_config,
@@ -34,8 +33,6 @@ from octo.utils.train_utils import (
     Timer,
     TrainState,
 )
-
-from imitator.utils.file_utils import get_models_folder
 
 try:
     from jax_smi import initialise_tracking  # type: ignore
@@ -46,13 +43,11 @@ except ImportError:
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string("project_name", "imitator_project", "Project name.")
-flags.DEFINE_string("data_dir", None, "Dataset directory.")
-flags.DEFINE_string("save_dir", None, "Save directory.")
+flags.DEFINE_string("name", "experiment", "Experiment name.")
 flags.DEFINE_bool("debug", False, "Debug config (no wandb logging)")
 
 default_config_file = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "config", "octo_finetune_config.py"
+    os.path.dirname(__file__), "configs/finetune_config.py"
 )
 config_flags.DEFINE_config_file(
     "config",
@@ -62,19 +57,9 @@ config_flags.DEFINE_config_file(
 )
 
 
-def main(argv):
-    if len(argv) > 1:
-        raise app.UsageError("Too many command-line arguments.")
-
+def main(_):
     initialize_compilation_cache()
     devices = jax.devices()
-
-    # dump flags
-    if FLAGS.data_dir is not None:
-        FLAGS.config.dataset_kwargs.data_dir = FLAGS.data_dir
-    if FLAGS.save_dir is None:
-        FLAGS.config.save_dir = get_models_folder(FLAGS.project_name)
-
     logging.info(
         f"""
         Octo Finetuning Script
@@ -121,7 +106,7 @@ def main(argv):
     #########
 
     name = format_name_with_config(
-        FLAGS.project_name,
+        FLAGS.name,
         FLAGS.config.to_dict(),
     )
     wandb_id = "{name}_{time}".format(
@@ -173,20 +158,11 @@ def main(argv):
     else:
         text_processor = ModuleSpec.instantiate(config["text_processor"])()
 
+
     def process_batch(batch):
         batch = process_text(batch, text_processor)
         del batch["dataset_name"]
         return batch
-
-    # load standardize_fn from `path/to/file.py:fn_name` format
-    if (
-        standardize_fn := FLAGS.config["dataset_kwargs"].get("standardize_fn", None)
-    ) is not None:
-        path, name = standardize_fn.split(":")
-        # imp is deprecated, but it's also what ml_collections uses
-        standardize_fn = getattr(imp.load_source("standardize_fn", path), name)
-        del FLAGS.config["dataset_kwargs"]["standardize_fn"]
-        FLAGS.config["dataset_kwargs"]["standardize_fn"] = standardize_fn
 
     dataset = make_single_dataset(
         FLAGS.config.dataset_kwargs,
@@ -204,6 +180,14 @@ def main(argv):
     train_data_iter = map(process_batch, train_data_iter)
     example_batch = next(train_data_iter)
 
+    # override action head with new action head TODO
+    # config["model"]["heads"]["action"] = ModuleSpec.create(
+    #     L1ActionHead,
+    #     action_horizon=4,  # TODO not hardcoding
+    #     action_dim=example_batch["action"].shape[-1],
+    #     readout_key="readout_action",
+    # )
+
     #########
     #
     # Load Pretrained Model
@@ -212,18 +196,6 @@ def main(argv):
 
     rng = jax.random.PRNGKey(FLAGS.config.seed)
     rng, init_rng = jax.random.split(rng)
-
-    # Modify config to match finetuning task
-    # del config["model"]["observation_tokenizers"][
-    #     "wrist"
-    # ]  # delete cause we don't have wrist data
-    config["model"]["heads"]["action"] = ModuleSpec.create(
-        L1ActionHead,
-        pred_horizon=FLAGS.config.pred_horizon,
-        action_dim=example_batch["action"].shape[-1],
-        readout_key="readout_action",
-    )
-
     model = OctoModel.from_config(
         config,
         example_batch,
@@ -274,11 +246,13 @@ def main(argv):
 
         # Add window_size to top of config, to make eval easier
         new_config = ConfigDict(model.config)
-        new_config["window_size"] = example_batch["observation"]["pad_mask"].shape[1]
+        new_config["window_size"] = example_batch["observation"][
+            "timestep_pad_mask"
+        ].shape[1]
         model = model.replace(config=new_config)
 
         # Save finetuning config since it's not saved by SaveCallback, i.e. as part of model.save_pretrained()
-        with open(
+        with tf.io.gfile.GFile(
             tf.io.gfile.join(save_dir, "finetune_config.json"), "w"
         ) as config_file:
             config_file.write(FLAGS.config.to_json_best_effort())
@@ -305,13 +279,14 @@ def main(argv):
         transformer_embeddings = bound_module.octo_transformer(
             batch["observation"],
             batch["task"],
-            batch["observation"]["pad_mask"],
+            batch["observation"]["timestep_pad_mask"],
             train=train,
         )
         action_loss, action_metrics = bound_module.heads["action"].loss(
-            transformer_embeddings,  # Action head knows to pull out the action readout_key
+            transformer_embeddings,  # action head knows to pull out the "action" readout_key
             batch["action"],
-            pad_mask=batch["observation"]["pad_mask"],
+            batch["observation"]["timestep_pad_mask"],
+            batch["action_pad_mask"],
             train=train,
         )
         return action_loss, action_metrics
@@ -322,12 +297,11 @@ def main(argv):
         jax.jit,
         in_shardings=[replicated_sharding, dp_sharding],
     )
-    def train_step(state, batch):
+    def train_step(state: TrainState, batch):
         rng, dropout_rng = jax.random.split(state.rng)
         (loss, info), grads = jax.value_and_grad(loss_fn, has_aux=True)(
             state.model.params, batch, dropout_rng, train=True
         )
-        # Gradient Metrics (TODO: Does the finetuner need these?) ###
         grad_norm = optax.global_norm(grads)
         updates, _ = state.tx.update(grads, state.opt_state, state.model.params)
         update_norm = optax.global_norm(updates)
@@ -339,8 +313,6 @@ def main(argv):
                 "learning_rate": lr_callable(state.step),
             }
         )
-        # End Debug Metrics #
-
         new_state = state.apply_gradients(grads=grads, rng=rng)
         return new_state, info
 
@@ -388,10 +360,7 @@ def main(argv):
     if "rollout_kwargs" in FLAGS.config:
         rollout_callback = RolloutVisualizationCallback(
             text_processor=text_processor,
-            history_length=FLAGS.config["window_size"],
-            model_pred_horizon=config["model"]["heads"]["action"]["kwargs"].get(
-                "pred_horizon", 1
-            ),
+            unnormalization_statistics=dataset.dataset_statistics["action"],
             **FLAGS.config.rollout_kwargs.to_dict(),
         )
     else:

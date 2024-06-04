@@ -4,6 +4,7 @@ import logging
 
 import numpy as np
 import cv2
+import jax
 import gymnasium as gym
 
 from imitator.utils.env.env_utils import listdict2dictlist, space_stack, stack_and_pad

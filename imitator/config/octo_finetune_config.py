@@ -1,5 +1,7 @@
 from ml_collections import ConfigDict
 from ml_collections.config_dict import FieldReference, placeholder
+
+from octo.utils.spec import ModuleSpec
 import os
 
 
@@ -17,20 +19,18 @@ def get_config(config_string="full,multimodal"):
     FINETUNING_KWARGS = {
         "name": "imitator_dataset",
         "data_dir": os.path.expanduser("~/tensorflow_datasets"),
-        "image_obs_keys": {
-            "primary": "sideview_image",
-            "wrist": "robot0_eye_in_hand_image",
-        },
+        "image_obs_keys": {"primary": "agentview_image", "wrist": "robot0_eye_in_hand_image"},
         "state_obs_keys": ["robot0_eef_pos", "robot0_eef_quat", "robot0_gripper_qpos"],
         "language_key": "language_instruction",
-        "action_proprio_normalization_type": "normal",
-        # All actions are relative deltas, except for the last one (gripper) which is absolute
-        # Specifying this is only necessary if you want to predict > 1 step into the future
-        # "absolute_action_mask": [False, False, False, False, False, False, True],
-        "absolute_action_mask": [True, True, True, True, True, True, True],
+        "action_state_normalization_type": "normal",
+        # We want to avoid normalizing the gripper
+        # "action_normalization_mask": [True, True, True, True, True, True, False],
+        "action_normalization_mask": [True, True, True, True, True, True, True],
         # standardize_fn is dynamically loaded from a file
         # for example: "experiments/kevin/custom_standardization_transforms.py:aloha_dataset_transform"
-        # "standardize_fn": "scripts/configs/dataset_transforms.py:imitator_dataset_transform",
+        # "standardize_fn": ModuleSpec.create(
+        #     "octo.data.oxe.oxe_standardization_transforms:bridge_dataset_transform",
+        # ),
         # If the default data loading speed is too slow, try these:
         # "num_parallel_reads": 8,  # for reading from disk / GCS
         # "num_parallel_calls": 16,  # for initial dataset construction
@@ -46,33 +46,30 @@ def get_config(config_string="full,multimodal"):
             "heads_*.map_head.probe",
             "heads_*.map_head.MultiHeadDotProductAttention_0.*",
         )
-    elif mode == "frozen_transformer":
-        frozen_keys = ("octo_transformer.BlockTransformer_0.*",)
     else:
         raise ValueError("Invalid mode")
 
     max_steps = FieldReference(50000)
-    window_size = FieldReference(default=2)
-    pred_horizon = FieldReference(default=4)
-    pretrained_path = FieldReference(default="hf://rail-berkeley/octo-small")
+    window_size = FieldReference(default=1)
 
     config = dict(
-        pretrained_path=pretrained_path,
+        pretrained_path=placeholder(str),
         pretrained_step=placeholder(int),
-        batch_size=128,
+        batch_size=256,
         shuffle_buffer_size=10000,
         num_steps=max_steps,
         log_interval=100,
         eval_interval=5000,
-        save_interval=1000,
-        save_dir="octo_models",
+        save_interval=5000,
+        save_dir=placeholder(str),
         seed=42,
-        wandb=dict(project="imitator", group=placeholder(str), entity=placeholder(str)),
+        wandb=dict(
+            project="octo_finetune", group=placeholder(str), entity=placeholder(str)
+        ),
         dataset_kwargs=FINETUNING_KWARGS,
         modality=task,
         finetuning_mode=mode,
         window_size=window_size,
-        pred_horizon=pred_horizon,
         optimizer=dict(
             learning_rate=dict(
                 name="cosine",
@@ -113,7 +110,7 @@ def get_config(config_string="full,multimodal"):
 
     traj_transform_kwargs = dict(
         window_size=window_size,
-        future_action_window_size=pred_horizon,
+        action_horizon=4,
         goal_relabeling_strategy=goal_relabeling_strategy,
         task_augment_strategy="delete_task_conditioning",
         task_augment_kwargs=dict(
@@ -153,15 +150,15 @@ def get_config(config_string="full,multimodal"):
             "primary": (112, 112),  # workspace (3rd person) camera is at 256x256
             "wrist": (112, 112),  # wrist camera is at 128x128
         },
-        image_augment_kwargs=[
-            workspace_augment_kwargs,
-            wrist_augment_kwargs,
-        ],
+        image_augment_kwargs=dict(
+            primary=workspace_augment_kwargs,
+            wrist=wrist_augment_kwargs,
+        ),
     )
     # If the default data loading speed is too slow, try these:
-    config["frame_transform_threads"] = (
-        16  # for the most CPU-intensive ops (decoding, resizing, augmenting)
-    )
+    config[
+        "frame_transform_threads"
+    ] = 16  # for the most CPU-intensive ops (decoding, resizing, augmenting)
 
     config["traj_transform_kwargs"] = traj_transform_kwargs
     config["frame_transform_kwargs"] = frame_transform_kwargs
