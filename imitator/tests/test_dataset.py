@@ -13,9 +13,8 @@ FUTURE_ACTION_WINDOW_SIZE = 10
 BATCH_SIZE = 128
 DATASET_NAME = "imitator_dataset"
 DATA_DIR = os.path.expanduser("~/tensorflow_datasets")
-# STATE_OBS_KEYS = ["robot0_eef_pos", "robot0_eef_quat", "robot0_gripper_qpos", "object"]
-STATE_OBS_KEYS = ["robot_state", "joint_state"]
-ABSOLUTE_ACTION_MASK = [True] * 7
+STATE_OBS_KEYS = ["robot0_eef_pos", "robot0_eef_quat", "robot0_gripper_qpos", "object"]
+ACTION_NORMALIZATION_MASK = [True, True, True, True, True, True, True]
 
 if __name__ == "__main__":
     if TASK == "image_conditioned":
@@ -32,16 +31,13 @@ if __name__ == "__main__":
 
     traj_transform_kwargs = dict(
         window_size=WINDOW_SIZE,
-        future_action_window_size=FUTURE_ACTION_WINDOW_SIZE,
+        action_horizon=FUTURE_ACTION_WINDOW_SIZE,
         goal_relabeling_strategy=goal_relabeling_strategy,
         task_augment_strategy="delete_task_conditioning",
         task_augment_kwargs=dict(
             keep_image_prob=keep_image_prob,
         ),
-        # If the default data loading speed is too slow, try these:
-        # num_parallel_calls=16,  # for less CPU-intensive ops
     )
-
     workspace_augment_kwargs = dict(
         random_resized_crop=dict(scale=[0.8, 1.0], ratio=[0.9, 1.1]),
         random_brightness=[0.1],
@@ -56,6 +52,7 @@ if __name__ == "__main__":
             "random_hue",
         ],
     )
+
     wrist_augment_kwargs = dict(
         random_brightness=[0.1],
         random_contrast=[0.9, 1.1],
@@ -73,32 +70,22 @@ if __name__ == "__main__":
         dataset_kwargs=dict(
             name=DATASET_NAME,
             data_dir=DATA_DIR,
-            image_obs_keys={
-                "primary": "head_image",
-                "wrist": None,
+            image_obs_keys= {
+                "primary": "agentview_image",
+                "wrist": "robot0_eye_in_hand_image"
             },
             state_obs_keys=STATE_OBS_KEYS,
-            # language_key="language_instruction",
-            action_state_normalization_type=NormalizationType.BOUNDS,  # or NORMAL
-            absolute_action_mask=ABSOLUTE_ACTION_MASK,
+            language_key="language_instruction",
+            action_state_normalization_type=NormalizationType.BOUNDS,
+            action_normalization_mask=ACTION_NORMALIZATION_MASK,
         ),
-        traj_transform_kwargs=dict(
-            window_size=WINDOW_SIZE,
-            future_action_window_size=FUTURE_ACTION_WINDOW_SIZE,
-            # goal_relabeling_strategy=goal_relabeling_strategy,
-            # task_augment_strategy="delete_task_conditioning",
-            # task_augment_kwargs=dict(
-            #     keep_image_prob=keep_image_prob,
-            # ),
-            # If the default data loading speed is too slow, try these:
-            # num_parallel_calls=16,  # for less CPU-intensive ops
-        ),
+        traj_transform_kwargs=traj_transform_kwargs,
         frame_transform_kwargs=dict(
-            resize_size={"primary": (224, 224), "wrist": (224, 224)},
-            image_augment_kwargs=[
-                workspace_augment_kwargs,
-                wrist_augment_kwargs,
-            ],
+            resize_size={"primary": (112, 112), "wrist": (112, 112)},
+            image_augment_kwargs={
+                "primary": workspace_augment_kwargs,
+                "wrist": wrist_augment_kwargs,
+            },
         ),
         train=True,
     )

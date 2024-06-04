@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
-
 import os
 from typing import Iterator, Tuple, Any
 import numpy as np
+import cv2
 import tensorflow_datasets as tfds
 import h5py
 from imitator.utils.file_utils import get_config_from_project_name, get_data_hdf5, extract_number
@@ -111,7 +110,11 @@ class ImitatorDataset(tfds.core.GeneratorBasedBuilder):
                 episode.append(
                     {
                         "observation": {
-                            obs_key: demo["obs"][obs_key][i].astype(obs_dtype[obs_key]) for obs_key in obs_keys
+                            obs_key: cv2.resize(
+                                demo["obs"][obs_key][i].astype(obs_dtype[obs_key]),
+                                tuple(obs_config[obs_key].dim[:2]),
+                                interpolation=cv2.INTER_LANCZOS4,
+                            ) if obs_config[obs_key].modality == "ImageModality" else demo["obs"][obs_key][i].astype(obs_dtype[obs_key]) for obs_key in obs_keys
                         },
                         "action": demo["actions"][i].astype(np.float32),
                         "discount": 1.0,

@@ -20,7 +20,7 @@ def get_config(config_string="full,multimodal"):
         "name": "imitator_dataset",
         "data_dir": os.path.expanduser("~/tensorflow_datasets"),
         "image_obs_keys": {"primary": "agentview_image", "wrist": "robot0_eye_in_hand_image"},
-        "state_obs_key": "robot0_joint_pos",
+        "state_obs_keys": ["robot0_eef_pos", "robot0_eef_quat", "robot0_gripper_qpos"],
         "language_key": "language_instruction",
         "action_state_normalization_type": "normal",
         # We want to avoid normalizing the gripper
