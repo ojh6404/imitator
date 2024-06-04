@@ -2,12 +2,11 @@ import copy
 import logging
 from typing import Any, Dict, List, Sequence, Tuple, Union
 
-from imitator.data.oxe.oxe_dataset_configs import ActionEncoding, OXE_DATASET_CONFIGS
-from imitator.data.oxe.oxe_dataset_mixes import OXE_NAMED_MIXES
-from imitator.data.oxe.oxe_standardization_transforms import (
-    OXE_STANDARDIZATION_TRANSFORMS,
-)
-from imitator.data.utils.data_utils import NormalizationType
+from octo.data.oxe.oxe_dataset_configs import ActionEncoding, OXE_DATASET_CONFIGS
+from octo.data.oxe.oxe_dataset_mixes import OXE_NAMED_MIXES
+from octo.data.oxe.oxe_standardization_transforms import OXE_STANDARDIZATION_TRANSFORMS
+from octo.data.utils.data_utils import NormalizationType
+from octo.utils.spec import ModuleSpec
 
 
 def make_oxe_dataset_kwargs(
@@ -15,8 +14,9 @@ def make_oxe_dataset_kwargs(
     data_dir: str,
     load_camera_views: Sequence[str] = ("primary",),
     load_depth: bool = False,
-    load_state: bool = True,
+    load_state: bool = False,
     load_language: bool = True,
+    force_recompute_dataset_statistics: bool = False,
     action_state_normalization_type: NormalizationType = NormalizationType.NORMAL,
 ) -> Dict[str, Any]:
     """Generates dataset kwargs for a given dataset from Open X-Embodiment. The returned kwargs can be passed
@@ -27,21 +27,36 @@ def make_oxe_dataset_kwargs(
         data_dir: Base data directory that contains the dataset.
         load_camera_views: Which views to load. See `oxe_dataset_configs.py` for available views.
         load_depth: If True, loads corresponding depth channels for each RGB channel.
-        load_state: If True, loads state information.
+        load_state: If True, loads states information.
         load_language: If True, loads language instructions.
-        action_state_normalization_type: Normalization type to use for state actions.
+        force_recompute_dataset_statistics: If True, recompute dataset statistics.
+        action_state_normalization_type: Normalization type to use for states actions.
     """
     dataset_kwargs = copy.deepcopy(OXE_DATASET_CONFIGS[name])
-    if dataset_kwargs["action_encoding"] is not ActionEncoding.EEF_POS:
-        raise ValueError(
-            f"Cannot load {name} since only EEF pose delta action encoding is supported."
+
+    if dataset_kwargs["action_encoding"] is ActionEncoding.EEF_POS:
+        # with EEF_POS actions, the last action dimension is gripper
+        dataset_kwargs["action_normalization_mask"] = [True] * 6 + [False]
+    elif dataset_kwargs["action_encoding"] is ActionEncoding.JOINT_POS:
+        # with JOINT_POS actions, last dimension is gripper
+        dataset_kwargs["action_normalization_mask"] = [True] * 7 + [False]
+    elif dataset_kwargs["action_encoding"] is ActionEncoding.JOINT_POS_BIMANUAL:
+        # with JOINT_POS_BIMANUAL actions, 7th and 14th dimension are gripper
+        dataset_kwargs["action_normalization_mask"] = (
+            [True] * 6 + [False] + [True] * 6 + [False]
         )
-
-    # with EEF_POS actions, only the last action dimension (the gripper) is absolute
-    dataset_kwargs["absolute_action_mask"] = [False] * 6 + [True]
-
-    # we also want to skip normalizing the gripper action
-    dataset_kwargs["action_normalization_mask"] = [True] * 6 + [False]
+    elif dataset_kwargs["action_encoding"] is ActionEncoding.NAV_2D:
+        # with NAV_2D actions, all dimensions are deltas
+        dataset_kwargs["action_normalization_mask"] = [True] * 2
+    elif dataset_kwargs["action_encoding"] is ActionEncoding.JOINT_POS_BIMANUAL_NAV:
+        # with JOINT_POS_BIMANUAL_NAV actions, 7th and 14th dimension are gripper
+        dataset_kwargs["action_normalization_mask"] = (
+            [True] * 6 + [False] + [True] * 6 + [False] + [True] * 2
+        )
+    else:
+        raise ValueError(
+            f"Cannot load {name} with unsupported action encoding {dataset_kwargs['action_encoding']}."
+        )
 
     # adjust loaded camera views
     if missing_keys := (set(load_camera_views) - set(dataset_kwargs["image_obs_keys"])):
@@ -61,20 +76,24 @@ def make_oxe_dataset_kwargs(
 
     if not load_depth:
         dataset_kwargs.pop("depth_obs_keys")
-    if not load_state:
-        dataset_kwargs.pop("state_obs_keys")
-
+    if load_state:
+        dataset_kwargs["state_obs_key"] = "state"
     if load_language:
         dataset_kwargs["language_key"] = "language_instruction"
 
-    dataset_kwargs["action_state_normalization_type"] = (
-        action_state_normalization_type
-    )
+    dataset_kwargs[
+        "action_state_normalization_type"
+    ] = action_state_normalization_type
 
     del dataset_kwargs["state_encoding"]
     del dataset_kwargs["action_encoding"]
 
-    dataset_kwargs["standardize_fn"] = OXE_STANDARDIZATION_TRANSFORMS[name]
+    dataset_kwargs["standardize_fn"] = ModuleSpec.create(
+        OXE_STANDARDIZATION_TRANSFORMS[name]
+    )
+
+    if force_recompute_dataset_statistics:
+        dataset_kwargs["force_recompute_dataset_statistics"] = True
 
     return {"name": name, "data_dir": data_dir, **dataset_kwargs}
 
@@ -84,8 +103,9 @@ def make_oxe_dataset_kwargs_and_weights(
     data_dir: str,
     load_camera_views: Sequence[str] = ("primary",),
     load_depth: bool = False,
-    load_state: bool = True,
+    load_state: bool = False,
     load_language: bool = True,
+    force_recompute_dataset_statistics: bool = False,
     action_state_normalization_type: NormalizationType = NormalizationType.NORMAL,
 ) -> Tuple[Dict[str, Any], List[float]]:
     """
@@ -98,9 +118,10 @@ def make_oxe_dataset_kwargs_and_weights(
         data_dir: Base data directory that contains the datasets.
         load_camera_views: Which views to load. See `oxe_dataset_configs.py` for available views.
         load_depth: If True, loads corresponding depth channels for each RGB channel.
-        load_state: If True, loads state information.
+        load_state: If True, loads states information.
         load_language: If True, loads language instructions.
-        action_state_normalization_type: Normalization type to use for state actions.
+        force_recompute_dataset_statistics: If True, recompute dataset statistics.
+        action_state_normalization_type: Normalization type to use for states actions.
     Returns:
         Tuple of (dataset_kwargs_list, sampling weights).
     """
@@ -127,6 +148,7 @@ def make_oxe_dataset_kwargs_and_weights(
                     load_depth,
                     load_state,
                     load_language,
+                    force_recompute_dataset_statistics,
                     action_state_normalization_type,
                 )
             )

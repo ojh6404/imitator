@@ -14,12 +14,8 @@ def stack_and_pad(history: deque, num_obs: int):
     pad_length = horizon - min(num_obs, horizon)
     timestep_pad_mask = np.ones(horizon)
     timestep_pad_mask[:pad_length] = 0
-    # full_obs["timestep_pad_mask"] = timestep_pad_mask
-    full_obs["pad_mask"] = (
-        timestep_pad_mask  # TODO: modify this to be compatible with the new version of octo
-    )
+    full_obs["timestep_pad_mask"] = timestep_pad_mask
     return full_obs
-
 
 def space_stack(space: gym.Space, repeat: int):
     """

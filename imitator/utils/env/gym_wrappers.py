@@ -8,6 +8,56 @@ import gymnasium as gym
 
 from imitator.utils.env.env_utils import listdict2dictlist, space_stack, stack_and_pad
 
+class ProcessObsWrapper(gym.ObservationWrapper):
+    """
+    Processes the observation dictionary to match the expected format for the model.
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        flatten_keys: Sequence[str] = ("proprio",),
+        image_keys: Optional[Dict[str, str]] = None,
+    ):
+        super().__init__(env)
+        assert isinstance(
+            self.observation_space, gym.spaces.Dict
+        ), "Only Dict observation spaces are supported."
+        self.flatten_keys = flatten_keys
+        self.image_keys = image_keys
+
+        logging.info(f"Flattening keys: {self.flatten_keys}")
+        logging.info(f"Image keys: {self.image_keys}")
+
+        spaces = self.observation_space.spaces
+
+        spaces["state"] = gym.spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(sum([spaces[key].shape[-1] for key in flatten_keys]),),
+            dtype=np.float32,
+        )
+        if image_keys is not None:  # rename image keys
+            for k, v in image_keys.items():
+                if v is not None:
+                    spaces["image_" + k] = gym.spaces.Box(
+                        low=0,
+                        high=255,
+                        shape=spaces[v].shape,
+                        dtype=np.uint8,
+                    )
+        self.observation_space = gym.spaces.Dict(spaces)
+
+    def flatten_state(self, obs):
+        return np.concatenate([obs[key] for key in self.flatten_keys], axis=-1)
+
+    def observation(self, obs):
+        obs["state"] = self.flatten_state(obs)
+        if self.image_keys is not None:
+            for k, v in self.image_keys.items():
+                if v is not None:
+                    obs["image_" + k] = obs[v]
+        return obs
 
 class HistoryWrapper(gym.Wrapper):
     """
@@ -31,7 +81,6 @@ class HistoryWrapper(gym.Wrapper):
         self.num_obs += 1
         self.history.append(obs)
         assert len(self.history) == self.horizon
-
         full_obs = stack_and_pad(self.history, self.num_obs)
 
         return full_obs, reward, done, trunc, info
@@ -252,131 +301,39 @@ class ResizeImageWrapper(gym.ObservationWrapper):
         return observation
 
 
-class ProcessObsWrapper(gym.ObservationWrapper):
+
+
+
+class NormalizeState(gym.ObservationWrapper):
     """
-    Processes the observation dictionary to match the expected format for the model.
+    Un-normalizes the state.
     """
 
     def __init__(
         self,
         env: gym.Env,
-        flatten_keys: Sequence[str] = ("proprio",),
-        image_keys: Optional[Dict[str, str]] = None,
+        action_state_metadata: dict,
     ):
-        super().__init__(env)
-        assert isinstance(
-            self.observation_space, gym.spaces.Dict
-        ), "Only Dict observation spaces are supported."
-        self.flatten_keys = flatten_keys
-        self.image_keys = image_keys
-
-        logging.info(f"Flattening keys: {self.flatten_keys}")
-        logging.info(f"Image keys: {self.image_keys}")
-
-        spaces = self.observation_space.spaces
-
-        spaces["proprio"] = gym.spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(sum([spaces[key].shape[-1] for key in flatten_keys]),),
-            dtype=np.float32,
+        self.action_state_metadata = jax.tree_map(
+            lambda x: np.array(x),
+            action_state_metadata,
+            is_leaf=lambda x: isinstance(x, list),
         )
-        if image_keys is not None:  # rename image keys
-            for k, v in image_keys.items():
-                if v is not None:
-                    spaces["image_" + k] = gym.spaces.Box(
-                        low=0,
-                        high=255,
-                        shape=spaces[v].shape,
-                        dtype=np.uint8,
-                    )
-        self.observation_space = gym.spaces.Dict(spaces)
+        super().__init__(env)
 
-    def flatten_proprio(self, obs):
-        return np.concatenate([obs[key] for key in self.flatten_keys], axis=-1)
+    def normalize(self, data, metadata):
+        mask = metadata.get("mask", np.ones_like(metadata["mean"], dtype=bool))
+        return np.where(
+            mask,
+            (data - metadata["mean"]) / (metadata["std"] + 1e-8),
+            data,
+        )
 
     def observation(self, obs):
-        obs["proprio"] = self.flatten_proprio(obs)
-        if self.image_keys is not None:
-            for k, v in self.image_keys.items():
-                if v is not None:
-                    obs["image_" + k] = obs[v]
+        if "state" in self.action_state_metadata:
+            obs["state"] = self.normalize(
+                obs["state"], self.action_state_metadata["state"]
+            )
+        else:
+            assert "state" not in obs, "Cannot normalize state without metadata."
         return obs
-
-
-class NormalizeProprio(gym.ObservationWrapper):
-    """
-    normalizes the proprio.
-    """
-
-    def __init__(
-        self,
-        env: gym.Env,
-        proprio_stats: dict,
-    ):
-        super().__init__(env)
-        self.proprio_stats = proprio_stats
-
-    def normalize(self, obs):
-        obs["proprio"] = (obs["proprio"] - self.proprio_stats["mean"]) / (
-            self.proprio_stats["std"] + 1e-8
-        )
-        return obs
-
-    def observation(self, obs):
-        return self.normalize(obs)
-
-
-class UnnormalizeAction(gym.ActionWrapper):
-    """
-    Unnormalizes the action.
-    """
-
-    def __init__(
-        self,
-        env: gym.Env,
-        action_stats: dict,
-    ):
-        super().__init__(env)
-        self.action_stats = action_stats
-
-    def unnormalize(self, action):
-        return action * self.action_stats["std"] + self.action_stats["mean"]
-
-    def action(self, action):
-        return self.unnormalize(action)
-
-
-# class NormalizeProprio(gym.ObservationWrapper):
-#     """
-#     Un-normalizes the proprio.
-#     """
-
-#     def __init__(
-#         self,
-#         env: gym.Env,
-#         action_proprio_metadata: dict,
-#     ):
-#         self.action_proprio_metadata = jax.tree_map(
-#             lambda x: np.array(x),
-#             action_proprio_metadata,
-#             is_leaf=lambda x: isinstance(x, list),
-#         )
-#         super().__init__(env)
-
-#     def normalize(self, data, metadata):
-#         mask = metadata.get("mask", np.ones_like(metadata["mean"], dtype=bool))
-#         return np.where(
-#             mask,
-#             (data - metadata["mean"]) / (metadata["std"] + 1e-8),
-#             data,
-#         )
-
-#     def observation(self, obs):
-#         if "proprio" in self.action_proprio_metadata:
-#             obs["proprio"] = self.normalize(
-#                 obs["proprio"], self.action_proprio_metadata["proprio"]
-#             )
-#         else:
-#             assert "proprio" not in obs, "Cannot normalize proprio without metadata."
-#         return obs

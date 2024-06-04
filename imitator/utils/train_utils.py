@@ -14,8 +14,8 @@ from ml_collections import ConfigDict
 import numpy as np
 import optax
 
+from octo.model.octo_model import OctoModel
 from imitator.data.utils.text_processing import TextProcessor
-from imitator.model.octo_model import OctoModel
 from imitator.utils import jax_utils
 from imitator.utils.typing import Config, Data, Params, PRNGKey
 
@@ -172,6 +172,8 @@ def filter_eval_datasets(dataset_kwargs_list, sample_weights, eval_datasets=None
         sample_weights = [1.0] * len(dataset_kwargs_list)
     if eval_datasets is None:
         return dataset_kwargs_list, sample_weights
+    if len(eval_datasets) == 0:
+        return [], []
     else:
         return list(
             map(
@@ -253,20 +255,18 @@ def freeze_weights(
     # freeze anything that matches fnmatch patterns in `frozen_keys`
     # path is a string of .-separated module names, e.g. ('octo_transformer.BlockTransformer_0...')
     param_partitions = flax.traverse_util.path_aware_map(
-        lambda path, v: (
-            "frozen"
-            if any([fnmatch(".".join(path), key) for key in frozen_keys])
-            else "trainable"
-        ),
+        lambda path, v: "frozen"
+        if any([fnmatch(".".join(path), key) for key in frozen_keys])
+        else "trainable",
         params_or_params_shape,
     )
     tx = optax.multi_transform(partition_optimizers, param_partitions)
 
     logging.debug("Frozen params:")
     flax.traverse_util.path_aware_map(
-        lambda path, opt_status: (
-            logging.debug(".".join(path)) if opt_status == "frozen" else None
-        ),
+        lambda path, opt_status: logging.debug(".".join(path))
+        if opt_status == "frozen"
+        else None,
         param_partitions,
     )
     total_params = sum(

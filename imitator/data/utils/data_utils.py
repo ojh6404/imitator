@@ -1,4 +1,5 @@
 from enum import Enum
+from fnmatch import fnmatch
 import hashlib
 import json
 import logging
@@ -46,17 +47,18 @@ def to_padding(tensor: tf.Tensor) -> tf.Tensor:
         raise ValueError(f"Cannot generate padding for tensor of type {tensor.dtype}.")
 
 
-def make_neutral_actions(
-    action: tf.Tensor, absolute_action_mask: tf.Tensor
-) -> tf.Tensor:
-    """Returns "neutral" actions, meaning relative actions are zeroed and absolute actions are retained.
-    `absolute_action_mask` should be a 1D boolean mask that indicates which action dimensions are absolute.
-    """
-    return tf.where(
-        absolute_action_mask[(None,) * (action.ndim - 1)],
-        action,
-        tf.zeros_like(action),
-    )
+def sample_match_keys_uniform(d: dict, key_template: str):
+    """Samples uniformly from all keys fnmatching the template."""
+    match_keys = [key for key in d.keys() if fnmatch(key, key_template)]
+    if not match_keys:
+        raise ValueError(f"No matching key found for {key_template}. Keys: {d.keys()}")
+    logging.info(f"Sampling uniformly across keys: {match_keys}")
+    if len(match_keys) > 1:
+        stacked = tf.stack([d[key] for key in match_keys])
+        idx = tf.random.uniform((), 0, len(stacked) - 1, dtype=tf.int32)
+        return stacked[idx]
+    else:
+        return d[match_keys[0]]
 
 
 def pprint_data_mixture(
@@ -80,10 +82,11 @@ def get_dataset_statistics(
     dataset: dl.DLataset,
     hash_dependencies: Tuple[str, ...],
     save_dir: Optional[str] = None,
+    force_recompute: bool = False,
 ) -> dict:
     """Either computes the statistics of a dataset or loads them from a cache file if this function has been
     called before with the same `hash_dependencies`. Currently, the statistics include the min/max/mean/std of
-    the actions and state as well as the number of transitions and trajectories in the dataset.
+    the actions and states as well as the number of transitions and trajectories in the dataset.
     """
     unique_hash = hashlib.sha256(
         "".join(hash_dependencies).encode("utf-8"),
@@ -95,7 +98,7 @@ def get_dataset_statistics(
         os.path.join(
             "~",
             ".cache",
-            "octo",
+            "imitator",
             f"dataset_statistics_{unique_hash}.json",
         )
     )
@@ -106,13 +109,13 @@ def get_dataset_statistics(
         path = local_path
 
     # check if cache file exists and load
-    if tf.io.gfile.exists(path):
+    if tf.io.gfile.exists(path) and not force_recompute:
         logging.info(f"Loading existing dataset statistics from {path}.")
         with tf.io.gfile.GFile(path, "r") as f:
             metadata = json.load(f)
         return metadata
 
-    if os.path.exists(local_path):
+    if os.path.exists(local_path) and not force_recompute:
         logging.info(f"Loading existing dataset statistics from {local_path}.")
         with open(local_path, "r") as f:
             metadata = json.load(f)
@@ -121,10 +124,10 @@ def get_dataset_statistics(
     dataset = dataset.traj_map(
         lambda traj: {
             "action": traj["action"],
-            "state": (
-                traj["observation"]["state"]
+            **(
+                {"state": traj["observation"]["state"]}
                 if "state" in traj["observation"]
-                else tf.zeros_like(traj["action"])
+                else {}
             ),
         }
     )
@@ -146,27 +149,33 @@ def get_dataset_statistics(
         total=cardinality if cardinality != tf.data.UNKNOWN_CARDINALITY else None,
     ):
         actions.append(traj["action"])
-        states.append(traj["state"])
+        if "state" in traj:
+            states.append(traj["state"])
         num_transitions += traj["action"].shape[0]
         num_trajectories += 1
     actions = np.concatenate(actions)
-    states = np.concatenate(states)
     metadata = {
         "action": {
             "mean": actions.mean(0).tolist(),
             "std": actions.std(0).tolist(),
             "max": actions.max(0).tolist(),
             "min": actions.min(0).tolist(),
-        },
-        "state": {
-            "mean": states.mean(0).tolist(),
-            "std": states.std(0).tolist(),
-            "max": states.max(0).tolist(),
-            "min": states.min(0).tolist(),
+            "p99": np.quantile(actions, 0.99, 0).tolist(),
+            "p01": np.quantile(actions, 0.01, 0).tolist(),
         },
         "num_transitions": num_transitions,
         "num_trajectories": num_trajectories,
     }
+    if states:
+        states = np.concatenate(states)
+        metadata["state"] = {
+            "mean": states.mean(0).tolist(),
+            "std": states.std(0).tolist(),
+            "max": states.max(0).tolist(),
+            "min": states.min(0).tolist(),
+            "p99": np.quantile(states, 0.99, 0).tolist(),
+            "p01": np.quantile(states, 0.01, 0).tolist(),
+        }
 
     try:
         with tf.io.gfile.GFile(path, "w") as f:
@@ -179,7 +188,6 @@ def get_dataset_statistics(
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
         with open(local_path, "w") as f:
             json.dump(metadata, f)
-
 
     return metadata
 
@@ -233,22 +241,15 @@ def combine_dataset_statistics(
 
 
 def normalize_action_and_state(
-    traj: dict, metadata: dict, normalization_type: NormalizationType, skip_keys=None
+    traj: dict, metadata: dict, normalization_type: NormalizationType
 ):
     """Normalizes the action and state fields of a trajectory using the given metadata."""
     # maps keys of `metadata` to corresponding keys in `traj`
     keys_to_normalize = {
         "action": "action",
-        "state": "observation/state",
     }
-    if skip_keys is not None:
-        for skip_key in skip_keys:
-            if skip_key not in keys_to_normalize:
-                raise ValueError(
-                    f"{skip_key} cannot be skipped during normalization since it's not a valid key, "
-                    f"choose from {keys_to_normalize.keys()}"
-                )
-            keys_to_normalize.pop(skip_key)
+    if "state" in traj["observation"]:
+        keys_to_normalize["state"] = "observation/state"
 
     if normalization_type == NormalizationType.NORMAL:
         # normalize to mean 0, std 1
@@ -269,7 +270,7 @@ def normalize_action_and_state(
         # normalize to [-1, 1]
         for key, traj_key in keys_to_normalize.items():
             mask = metadata[key].get(
-                "mask", tf.ones_like(metadata[key]["min"], dtype=tf.bool)
+                "mask", tf.ones_like(metadata[key]["p01"], dtype=tf.bool)
             )
             traj = dl.transforms.selective_tree_map(
                 traj,
@@ -278,8 +279,8 @@ def normalize_action_and_state(
                     mask,
                     tf.clip_by_value(
                         2
-                        * (x - metadata[key]["min"])
-                        / (metadata[key]["max"] - metadata[key]["min"] + 1e-8)
+                        * (x - metadata[key]["p01"])
+                        / (metadata[key]["p99"] - metadata[key]["p01"] + 1e-8)
                         - 1,
                         -1,
                         1,
