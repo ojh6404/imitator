@@ -147,8 +147,8 @@ def get_config(config_string="full,multimodal"):
     )
     frame_transform_kwargs = dict(
         resize_size={
-            "primary": (112, 112),  # workspace (3rd person) camera is at 256x256
-            "wrist": (112, 112),  # wrist camera is at 128x128
+            "primary": (112, 112),  # workspace (3rd person) camera is at 112x112
+            "wrist": (112, 112),  # wrist camera is at 112x112
         },
         image_augment_kwargs=dict(
             primary=workspace_augment_kwargs,
