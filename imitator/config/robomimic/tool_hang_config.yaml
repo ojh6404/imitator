@@ -1,4 +1,4 @@
-obs: # input into policy
+obs:
   sideview_image:
     modality: "ImageModality"
     dim: [112, 112, 3]
@@ -16,15 +16,17 @@ obs: # input into policy
   robot0_gripper_qpos:
     modality: "FloatVectorModality"
     dim: 2
-  # robot0_joint_pos:
-  #   modality: "FloatVectorModality"
-  #   dim: 7
-  # object:
-  #   modality: "FloatVectorModality"
-  #   dim: 44
+  robot0_joint_pos:
+    modality: "FloatVectorModality"
+    dim: 7
+  object:
+    modality: "FloatVectorModality"
+    dim: 44
 actions:
   type: "action_trajectory"
   modality: "FloatVectorModality"
-  dim: 7 # x0,y0,z0,x1,y1,z1,grasp0,grasp1
+  dim: 7 # x,y,z,roll,pitch,yaw,gripper
+  history: 2
+  horizon: 4
 task:
   language_instruction: "Pick up and hang tool"

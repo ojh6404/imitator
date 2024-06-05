@@ -16,15 +16,17 @@ obs:
   robot0_gripper_qpos:
     modality: "FloatVectorModality"
     dim: 2
-  # robot0_joint_pos:
-  #   modality: "FloatVectorModality"
-  #   dim: 7
-  # object:
-  #   modality: "FloatVectorModality"
-  #   dim: 10
+  robot0_joint_pos:
+    modality: "FloatVectorModality"
+    dim: 7
+  object:
+    modality: "FloatVectorModality"
+    dim: 10
 actions:
   type: "action_trajectory"
   modality: "FloatVectorModality"
-  dim: 7 # x,y,z,roll,pitch,yaw,grasp
+  dim: 7 # x,y,z,roll,pitch,yaw,gripper
+  horizon: 10
+  history: 4
 task:
   language_instruction: "Pick up the Red Cube"
