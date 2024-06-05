@@ -7,6 +7,7 @@ import os
 import re
 from omegaconf import OmegaConf
 import json
+import shutil
 
 PROJECT_ROOT = os.path.expanduser("~/.imitator")
 
@@ -38,12 +39,6 @@ def get_project_folder(project_name):
     return project_dir
 
 
-def get_log_folder(project_name):
-    project_dir = get_project_folder(project_name)
-    model_dir = os.path.join(project_dir, "runs")
-    return model_dir
-
-
 def get_models_folder(project_name):
     project_dir = get_project_folder(project_name)
     model_dir = os.path.join(project_dir, "models")
@@ -62,12 +57,6 @@ def get_data_folder(project_name):
     return data_dir
 
 
-def get_data_hdf5(project_name, file_name="dataset.hdf5"):
-    data_dir = get_data_folder(project_name)
-    data_file = os.path.join(data_dir, file_name)
-    return data_file
-
-
 def get_config_file(project_name):
     config_dir = get_config_folder(project_name)
     config_file = os.path.join(config_dir, "config.yaml")
@@ -79,50 +68,36 @@ def get_config_from_project_name(project_name):
     config = OmegaConf.load(config_file)
     return config
 
-
-def get_normalize_cfg(project_name):
-    config_dir = get_config_folder(project_name)
-    normalize_file = os.path.join(config_dir, "normalize.yaml")
-    normalize_cfg = OmegaConf.load(normalize_file)
-    return normalize_cfg
-
-
-def update_normlize_cfg(project_name, config):
-    normalize_cfg = get_normalize_cfg(project_name)
-    if config.actions.normalize:
-        config.actions.min = normalize_cfg.actions.min
-        config.actions.max = normalize_cfg.actions.max
-    for obs in normalize_cfg["obs"].keys():
-        if config.obs[obs].normalize:
-            config.obs[obs].min = normalize_cfg.obs[obs].min
-            config.obs[obs].max = normalize_cfg.obs[obs].max
-    return config
-
-
-def get_latest_runs(project_name, model_type):
-    model_dir = get_log_folder(project_name)
-    model_type_dir = sort_names_by_number(
-        [name for name in os.listdir(model_dir) if name.startswith(model_type)]
-    )[-1]
-    model_type_dir = os.path.join(model_dir, model_type_dir)
-    return model_type_dir
-
-
-def get_best_runs(project_name, model_type):
-    model_type_dir = get_latest_runs(project_name, model_type)
-    if os.path.exists(os.path.join(model_type_dir, model_type + "_model_best.pth")):
-        model_file = os.path.join(model_type_dir, model_type + "_model_best.pth")
-        print("Best model found: ", model_file)
-        return model_file
-    else:
-        model_file = sort_names_by_number(
-            [name for name in os.listdir(model_type_dir) if name.startswith(model_type)]
-        )[-1]
-        model_file = os.path.join(model_type_dir, model_file)
-        print("Best model not found, use the latest model: ", model_file)
-        return model_file
-
-
-def print_config(config):
+def pprint_config(config):
     dict_config = OmegaConf.to_container(config, resolve=True)
     print(json.dumps(dict_config, indent=4))
+
+def main():
+    import sys
+    command = sys.argv[1]
+    assert command in ['init', 'run'], "First argument must be 'init' or 'run'"
+
+    def init_project(project_name):
+        try:
+            project_path = create_project_folder(project_name)
+            config_folder = get_config_folder(project_name)
+            os.makedirs(config_folder, exist_ok=True)
+
+            # create config dir and
+            default_config = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "default.yaml")
+            config_file = get_config_file(project_name)
+            shutil.copy(default_config, config_file)
+
+            # create data dir
+            data_folder = get_data_folder(project_name)
+            os.makedirs(data_folder, exist_ok=True)
+            print(f"Project '{project_name}' created at {project_path}")
+        except OSError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+
+    if command == 'init':
+        project_name = sys.argv[2]
+        init_project(project_name)
+    elif command == 'run':
+        pass # TODO: implement run command
