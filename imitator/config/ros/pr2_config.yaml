@@ -1,18 +1,16 @@
 obs:
   head_image:                 # NOTE must include "image" in obs name if it is image modality
+    topic_name: "/kinect_head/rgb/image_rect_color/compressed"
+    msg_type: "CompressedImage"
     modality: "ImageModality" # NOTE "ImageModality" of "FloatVectorModality" is available
     dim: [112, 112, 3]        # NOTE dim to resize image
     camera: "primary"         # NOTE "primary" of "wrist"
-    topic_name: "/kinect_head/rgb/image_rect_color/compressed"
-    msg_type: "CompressedImage"
   robot_state:
-    modality: "FloatVectorModality"
-    dim: 7 # x,y,z,roll,pitch,yaw,grasp
     topic_name: "/eus_imitation/robot_state"
     msg_type: "FloatVector"
-  joint_state:
     modality: "FloatVectorModality"
-    dim: 7 # len(joints)
+    dim: 7 # x,y,z,roll,pitch,yaw,grasp
+  joint_state:
     topic_name: "/joint_states"
     msg_type: "JointState"
     joints: # NOTE which joints to include in obs
@@ -23,9 +21,11 @@ obs:
       - "r_forearm_roll_joint"
       - "r_wrist_flex_joint"
       - "r_wrist_roll_joint"
+    modality: "FloatVectorModality"
+    dim: 7 # len(joints)
 actions:
   type: "action_trajectory"
-  dim: 7 # x,y,z,roll,pitch,yaw,grasp for example
+  dim: 7 # x,y,z,roll,pitch,yaw,gripper
   topic_name: "/eus_imitation/robot_action"
   msg_type: "FloatVector"
   modality: "FloatVectorModality"
