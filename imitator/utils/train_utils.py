@@ -255,18 +255,20 @@ def freeze_weights(
     # freeze anything that matches fnmatch patterns in `frozen_keys`
     # path is a string of .-separated module names, e.g. ('octo_transformer.BlockTransformer_0...')
     param_partitions = flax.traverse_util.path_aware_map(
-        lambda path, v: "frozen"
-        if any([fnmatch(".".join(path), key) for key in frozen_keys])
-        else "trainable",
+        lambda path, v: (
+            "frozen"
+            if any([fnmatch(".".join(path), key) for key in frozen_keys])
+            else "trainable"
+        ),
         params_or_params_shape,
     )
     tx = optax.multi_transform(partition_optimizers, param_partitions)
 
     logging.debug("Frozen params:")
     flax.traverse_util.path_aware_map(
-        lambda path, opt_status: logging.debug(".".join(path))
-        if opt_status == "frozen"
-        else None,
+        lambda path, opt_status: (
+            logging.debug(".".join(path)) if opt_status == "frozen" else None
+        ),
         param_partitions,
     )
     total_params = sum(

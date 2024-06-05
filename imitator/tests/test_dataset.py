@@ -70,9 +70,9 @@ if __name__ == "__main__":
         dataset_kwargs=dict(
             name=DATASET_NAME,
             data_dir=DATA_DIR,
-            image_obs_keys= {
+            image_obs_keys={
                 "primary": "agentview_image",
-                "wrist": "robot0_eye_in_hand_image"
+                "wrist": "robot0_eye_in_hand_image",
             },
             state_obs_keys=STATE_OBS_KEYS,
             language_key="language_instruction",

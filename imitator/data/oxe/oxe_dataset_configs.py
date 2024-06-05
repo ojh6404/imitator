@@ -12,6 +12,7 @@ Target configuration:
     proprio_encoding: Type of proprio encoding used
     action_encoding: Type of action encoding used, e.g. EEF position vs joint position control
 """
+
 from enum import IntEnum
 
 

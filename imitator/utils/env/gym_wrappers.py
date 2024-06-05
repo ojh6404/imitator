@@ -9,6 +9,7 @@ import gymnasium as gym
 
 from imitator.utils.env.env_utils import listdict2dictlist, space_stack, stack_and_pad
 
+
 class ProcessObsWrapper(gym.ObservationWrapper):
     """
     Processes the observation dictionary to match the expected format for the model.
@@ -59,6 +60,7 @@ class ProcessObsWrapper(gym.ObservationWrapper):
                 if v is not None:
                     obs["image_" + k] = obs[v]
         return obs
+
 
 class HistoryWrapper(gym.Wrapper):
     """
@@ -300,9 +302,6 @@ class ResizeImageWrapper(gym.ObservationWrapper):
             # image = tf.cast(tf.clip_by_value(tf.round(image), 0, 255), tf.uint8).numpy()
             observation[k] = image
         return observation
-
-
-
 
 
 class NormalizeState(gym.ObservationWrapper):

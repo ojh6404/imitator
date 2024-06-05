@@ -3,6 +3,7 @@ Contains trajectory transforms used in the imitator data pipeline. Trajectory tr
 that represents a single trajectory, meaning each tensor has the same leading dimension (the trajectory
 length).
 """
+
 from typing import Optional
 
 import tensorflow as tf
@@ -89,9 +90,11 @@ def chunk_act_obs(
     # broadcast "action_pad_mask" to the new chunked shape, and mark actions past the goal timestep as padding
     traj["action_pad_mask"] = tf.logical_and(
         # [traj_len, 1, 1, action_dim]
-        traj["action_pad_mask"][:, None, None, :]
-        if len(traj["action_pad_mask"].shape) == 2
-        else traj["action_pad_mask"][:, None, :],
+        (
+            traj["action_pad_mask"][:, None, None, :]
+            if len(traj["action_pad_mask"].shape) == 2
+            else traj["action_pad_mask"][:, None, :]
+        ),
         # [traj_len, window_size, action_horizon, 1]
         tf.logical_not(traj["observation"]["task_completed"])[:, :, :, None],
     )

@@ -69,7 +69,11 @@ def main(_):
     imitator_config = get_config_from_project_name(FLAGS.project_name)
 
     # dump obs config
-    image_obs_keys = [key for key in imitator_config.obs.keys() if imitator_config.obs[key].modality == "ImageModality"]
+    image_obs_keys = [
+        key
+        for key in imitator_config.obs.keys()
+        if imitator_config.obs[key].modality == "ImageModality"
+    ]
     primary_image_key, wrist_image_key = None, None
     for key in image_obs_keys:
         if imitator_config.obs[key].camera == "primary":
@@ -83,11 +87,17 @@ def main(_):
         "wrist": wrist_image_key,
     }
     if primary_image_key is not None:
-        FLAGS.config.frame_transform_kwargs.resize_size.primary = tuple(imitator_config.obs[primary_image_key].dim[:2])
+        FLAGS.config.frame_transform_kwargs.resize_size.primary = tuple(
+            imitator_config.obs[primary_image_key].dim[:2]
+        )
     if wrist_image_key is not None:
-        FLAGS.config.frame_transform_kwargs.resize_size.wrist = tuple(imitator_config.obs[wrist_image_key].dim[:2])
+        FLAGS.config.frame_transform_kwargs.resize_size.wrist = tuple(
+            imitator_config.obs[wrist_image_key].dim[:2]
+        )
     FLAGS.config.dataset_kwargs.state_obs_keys = [
-        key for key in imitator_config.obs.keys() if imitator_config.obs[key].modality == "FloatVectorModality"
+        key
+        for key in imitator_config.obs.keys()
+        if imitator_config.obs[key].modality == "FloatVectorModality"
     ]
 
     # dump history and action config
@@ -95,10 +105,9 @@ def main(_):
     FLAGS.config.traj_transform_kwargs.action_horizon = imitator_config.actions.horizon
     FLAGS.config.dataset_kwargs.action_normalization_mask = [
         True for _ in range(imitator_config.actions.dim - 1)
-    ] + [False] # avoid normalizing the gripper
-
-
-
+    ] + [
+        False
+    ]  # avoid normalizing the gripper
 
     logging.info(
         f"""
@@ -197,7 +206,6 @@ def main(_):
         text_processor = None
     else:
         text_processor = ModuleSpec.instantiate(config["text_processor"])()
-
 
     def process_batch(batch):
         batch = process_text(batch, text_processor)

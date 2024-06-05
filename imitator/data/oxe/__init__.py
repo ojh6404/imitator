@@ -81,9 +81,7 @@ def make_oxe_dataset_kwargs(
     if load_language:
         dataset_kwargs["language_key"] = "language_instruction"
 
-    dataset_kwargs[
-        "action_state_normalization_type"
-    ] = action_state_normalization_type
+    dataset_kwargs["action_state_normalization_type"] = action_state_normalization_type
 
     del dataset_kwargs["state_encoding"]
     del dataset_kwargs["action_encoding"]

@@ -1,6 +1,5 @@
 """Defines dataset mixtures and weights for the Open X-Embodiment Datasets."""
 
-
 BRIDGE_MIX = [
     ("bridge_dataset", 1.0),
 ]

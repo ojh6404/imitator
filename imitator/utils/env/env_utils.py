@@ -17,6 +17,7 @@ def stack_and_pad(history: deque, num_obs: int):
     full_obs["timestep_pad_mask"] = timestep_pad_mask
     return full_obs
 
+
 def space_stack(space: gym.Space, repeat: int):
     """
     Creates new Gym space that represents the original observation/action space

@@ -373,8 +373,8 @@ class RolloutVisualizationCallback(Callback):
                 rollout_infos = rollout_visualizer.run_rollouts(
                     policy_fn, train_state, mode, n_rollouts=self.trajs_for_rollouts
                 )
-                wandb_metrics[
-                    f"rollouts_{rollout_visualizer.name}/{mode}"
-                ] = rollout_infos
+                wandb_metrics[f"rollouts_{rollout_visualizer.name}/{mode}"] = (
+                    rollout_infos
+                )
 
         return wandb_metrics
