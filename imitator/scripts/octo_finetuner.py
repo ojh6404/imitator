@@ -18,6 +18,7 @@ from octo.model.octo_model import OctoModel
 from octo.model.components.action_heads import L1ActionHead
 from imitator.utils.jax_utils import initialize_compilation_cache
 from octo.utils.spec import ModuleSpec
+from imitator.utils.file_utils import get_config_from_project_name, get_models_folder
 from imitator.utils.train_callbacks import (
     RolloutVisualizationCallback,
     SaveCallback,
@@ -43,7 +44,7 @@ except ImportError:
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string("name", "experiment", "Experiment name.")
+flags.DEFINE_string("project_name", "imitator", "Project name")
 flags.DEFINE_bool("debug", False, "Debug config (no wandb logging)")
 
 default_config_file = os.path.join(
@@ -60,6 +61,45 @@ config_flags.DEFINE_config_file(
 def main(_):
     initialize_compilation_cache()
     devices = jax.devices()
+
+    if FLAGS.config.save_dir is None:
+        FLAGS.config.save_dir = get_models_folder(FLAGS.project_name)
+
+    # dump imitator config to octo finetuning config
+    imitator_config = get_config_from_project_name(FLAGS.project_name)
+
+    # dump obs config
+    image_obs_keys = [key for key in imitator_config.obs.keys() if imitator_config.obs[key].modality == "ImageModality"]
+    primary_image_key, wrist_image_key = None, None
+    for key in image_obs_keys:
+        if imitator_config.obs[key].camera == "primary":
+            primary_image_key = key
+        elif imitator_config.obs[key].camera == "wrist":
+            wrist_image_key = key
+        else:
+            raise ValueError(f"Unknown camera type {imitator_config.obs[key].camera}")
+    FLAGS.config.dataset_kwargs.image_obs_keys = {
+        "primary": primary_image_key,
+        "wrist": wrist_image_key,
+    }
+    if primary_image_key is not None:
+        FLAGS.config.frame_transform_kwargs.resize_size.primary = tuple(imitator_config.obs[primary_image_key].dim[:2])
+    if wrist_image_key is not None:
+        FLAGS.config.frame_transform_kwargs.resize_size.wrist = tuple(imitator_config.obs[wrist_image_key].dim[:2])
+    FLAGS.config.dataset_kwargs.state_obs_keys = [
+        key for key in imitator_config.obs.keys() if imitator_config.obs[key].modality == "FloatVectorModality"
+    ]
+
+    # dump history and action config
+    FLAGS.config.window_size = imitator_config.actions.history
+    FLAGS.config.traj_transform_kwargs.action_horizon = imitator_config.actions.horizon
+    FLAGS.config.dataset_kwargs.action_normalization_mask = [
+        True for _ in range(imitator_config.actions.dim - 1)
+    ] + [False] # avoid normalizing the gripper
+
+
+
+
     logging.info(
         f"""
         Octo Finetuning Script
@@ -106,7 +146,7 @@ def main(_):
     #########
 
     name = format_name_with_config(
-        FLAGS.name,
+        FLAGS.project_name,
         FLAGS.config.to_dict(),
     )
     wandb_id = "{name}_{time}".format(
@@ -181,12 +221,12 @@ def main(_):
     example_batch = next(train_data_iter)
 
     # override action head with new action head TODO
-    # config["model"]["heads"]["action"] = ModuleSpec.create(
-    #     L1ActionHead,
-    #     action_horizon=4,  # TODO not hardcoding
-    #     action_dim=example_batch["action"].shape[-1],
-    #     readout_key="readout_action",
-    # )
+    config["model"]["heads"]["action"] = ModuleSpec.create(
+        L1ActionHead,
+        action_horizon=FLAGS.config.traj_transform_kwargs.action_horizon,
+        action_dim=example_batch["action"].shape[-1],
+        readout_key="readout_action",
+    )
 
     #########
     #

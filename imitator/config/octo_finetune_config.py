@@ -50,10 +50,10 @@ def get_config(config_string="full,multimodal"):
         raise ValueError("Invalid mode")
 
     max_steps = FieldReference(50000)
-    window_size = FieldReference(default=1)
+    window_size = FieldReference(default=2)
 
     config = dict(
-        pretrained_path=placeholder(str),
+        pretrained_path="hf://rail-berkeley/octo-small-1.5",
         pretrained_step=placeholder(int),
         batch_size=256,
         shuffle_buffer_size=10000,

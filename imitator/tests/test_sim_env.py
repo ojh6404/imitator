@@ -4,7 +4,6 @@ import gymnasium as gym
 from imitator.utils.env.robomimic_env import RoboMimicEnv
 
 if __name__ == "__main__":
-    # env = gym.make("RoboMimic-v0", env_name="Lift", render_mode="human", **kwargs)
     env = RoboMimicEnv(
         env_name="Lift",
         render_mode="human",
