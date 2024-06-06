@@ -37,7 +37,6 @@ setup(
             "tensorboardX",
             "wandb",
             "dlimp@git+https://github.com/ojh6404/dlimp.git",
-            "octo@git+https://github.com/ojh6404/octo.git",
             "matplotlib",
             "jax",
             "flax",

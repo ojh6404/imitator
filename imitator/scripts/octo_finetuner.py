@@ -13,12 +13,9 @@ import tensorflow as tf
 import tqdm
 import wandb
 
+from imitator.model import octo
 from imitator.data.dataset import make_single_dataset
-from octo.model.octo_model import OctoModel
-from octo.model.components.action_heads import L1ActionHead
-from imitator.utils.jax_utils import initialize_compilation_cache
-from octo.utils.spec import ModuleSpec
-from imitator.utils.file_utils import get_config_from_project_name, get_models_folder
+from imitator.utils.file_utils import get_config_from_project_name, get_models_dir
 from imitator.utils.train_callbacks import (
     RolloutVisualizationCallback,
     SaveCallback,
@@ -34,6 +31,11 @@ from imitator.utils.train_utils import (
     Timer,
     TrainState,
 )
+from imitator.utils.jax_utils import initialize_compilation_cache
+
+OctoModel = octo.model.octo_model.OctoModel
+L1ActionHead = octo.model.components.action_heads.L1ActionHead
+ModuleSpec = octo.utils.spec.ModuleSpec
 
 try:
     from jax_smi import initialise_tracking  # type: ignore
@@ -63,7 +65,7 @@ def main(_):
     devices = jax.devices()
 
     if FLAGS.config.save_dir is None:
-        FLAGS.config.save_dir = get_models_folder(FLAGS.project_name)
+        FLAGS.config.save_dir = get_models_dir(FLAGS.project_name)
 
     # dump imitator config to octo finetuning config
     imitator_config = get_config_from_project_name(FLAGS.project_name)
