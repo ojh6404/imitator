@@ -68,14 +68,17 @@ def get_config_from_project_name(project_name):
     config = OmegaConf.load(config_file)
     return config
 
+
 def pprint_config(config):
     dict_config = OmegaConf.to_container(config, resolve=True)
     print(json.dumps(dict_config, indent=4))
 
+
 def main():
     import sys
+
     command = sys.argv[1]
-    assert command in ['init', 'run'], "First argument must be 'init' or 'run'"
+    assert command in ["init", "run"], "First argument must be 'init' or 'run'"
 
     def init_project(project_name):
         try:
@@ -84,7 +87,9 @@ def main():
             os.makedirs(config_folder, exist_ok=True)
 
             # create config dir and
-            default_config = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "default.yaml")
+            default_config = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "config", "default.yaml"
+            )
             config_file = get_config_file(project_name)
             shutil.copy(default_config, config_file)
 
@@ -96,8 +101,8 @@ def main():
             print(f"Error: {e}")
             sys.exit(1)
 
-    if command == 'init':
+    if command == "init":
         project_name = sys.argv[2]
         init_project(project_name)
-    elif command == 'run':
-        pass # TODO: implement run command
+    elif command == "run":
+        pass  # TODO: implement run command

@@ -69,8 +69,8 @@ setup(
     author_email="oh@jsk.imi.i.u-tokyo.ac.jp",
     version="0.0.4",
     entry_points={
-        'console_scripts': [
-            'imitator=imitator.utils.file_utils:main',
+        "console_scripts": [
+            "imitator=imitator.utils.file_utils:main",
         ]
-    }
+    },
 )
