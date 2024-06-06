@@ -13,9 +13,8 @@ import subprocess
 from imitator.utils import PROJECT_ROOT, PACKAGE_ROOT, CACHE_DIR
 
 def install_octo():
-    cache_dir = os.path.expanduser("~/.cache/imitator")
-    os.makedirs(cache_dir, exist_ok=True)
-    octo_dir = os.path.join(cache_dir, "octo")
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    octo_dir = os.path.join(CACHE_DIR, "octo")
     if os.path.exists(octo_dir):
         shutil.rmtree(octo_dir)
     subprocess.run(["git", "clone", "https://github.com/ojh6404/octo.git", octo_dir])
