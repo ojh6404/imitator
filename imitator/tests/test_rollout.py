@@ -11,17 +11,16 @@ from absl import app, flags
 from functools import partial
 
 
-from octo.model.octo_model import OctoModel
-from octo.utils.jax_utils import initialize_compilation_cache
-from octo.utils.train_callbacks import supply_rng
+from imitator.model import octo
+from imitator.utils.jax_utils import initialize_compilation_cache
+from imitator.utils.train_callbacks import supply_rng
 
 from imitator.utils.env.robomimic_env import RoboMimicEnv
 from imitator.utils.file_utils import (
-    get_models_folder,
-    get_data_folder,
+    get_models_dir,
+    get_data_dir,
     get_config_from_project_name,
 )
-
 from imitator.utils.env.gym_wrappers import (
     HistoryWrapper,
     TemporalEnsembleWrapper,
@@ -29,6 +28,8 @@ from imitator.utils.env.gym_wrappers import (
     ProcessObsWrapper,
     NormalizeState,
 )
+
+OctoModel = octo.model.octo_model.OctoModel
 
 initialize_compilation_cache()
 # prevent tensorflow from using GPU memory since it's only used for data loading
@@ -54,10 +55,10 @@ def main(argv):
 
     if FLAGS.data_dir is None:
         FLAGS.data_dir = os.path.join(
-            get_data_folder(FLAGS.project_name), "imitator_dataset/1.0.0"
+            get_data_dir(FLAGS.project_name), "imitator_dataset/1.0.0"
         )
     if FLAGS.model_dir is None:
-        FLAGS.model_dir = os.path.join(get_models_folder(FLAGS.project_name), "models")
+        FLAGS.model_dir = os.path.join(get_models_dir(FLAGS.project_name), "models")
 
     cfg = get_config_from_project_name(FLAGS.project_name)
     obs_keys = list(cfg.obs.keys())
@@ -149,7 +150,7 @@ def main(argv):
 
     for _ in range(10):  # 10 episodes
         obs, _ = env.reset()
-        for _ in range(200):  # 200 steps
+        for _ in range(500):  # 200 steps
             # model returns actions of shape [batch, pred_horizon, action_dim] -- remove batch
             start = time.time()
             actions = policy_fn(jax.tree_map(lambda x: x[None], obs), task)
