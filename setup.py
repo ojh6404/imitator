@@ -1,5 +1,14 @@
 from setuptools import setup
 
+def _post_install():
+    import os
+
+    PROJECT_ROOT = os.path.expanduser("~/.imitator")
+    os.makedirs(PROJECT_ROOT, exist_ok=True)
+    CACHE_DIR = os.path.expanduser("~/.cache/imitator")
+    os.makedirs(CACHE_DIR, exist_ok=True)
+
+
 setup(
     name="imitator",
     packages=["imitator"],
@@ -74,3 +83,5 @@ setup(
         ]
     },
 )
+
+_post_install()

@@ -8,9 +8,21 @@ import re
 from omegaconf import OmegaConf
 import json
 import shutil
+import sys
+import subprocess
+from imitator.utils import PROJECT_ROOT, PACKAGE_ROOT, CACHE_DIR
 
-PROJECT_ROOT = os.path.expanduser("~/.imitator")
-
+def install_octo():
+    cache_dir = os.path.expanduser("~/.cache/imitator")
+    os.makedirs(cache_dir, exist_ok=True)
+    octo_dir = os.path.join(cache_dir, "octo")
+    if os.path.exists(octo_dir):
+        shutil.rmtree(octo_dir)
+    subprocess.run(["git", "clone", "https://github.com/ojh6404/octo.git", octo_dir])
+    subprocess.run(["pip", "install", "-e", octo_dir])
+    path = os.path.join(CACHE_DIR, "octo")
+    sys.path.append(path)
+    print("octo installed successfully")
 
 def extract_number(name):
     match = re.search(r"\d+", name)
@@ -25,40 +37,40 @@ def sort_names_by_number(names):
     return sorted_names
 
 
-# function that create project folder in the root directory
-def create_project_folder(project_name):
+# function that create project dir in the root directory
+def create_project_dir(project_name):
     project_dir = os.path.join(PROJECT_ROOT, project_name)
     if not os.path.exists(project_dir):
         os.makedirs(project_dir)
     return project_dir
 
 
-# function that get project folder in the root directory
-def get_project_folder(project_name):
+# function that get project dir in the root directory
+def get_project_dir(project_name):
     project_dir = os.path.join(PROJECT_ROOT, project_name)
     return project_dir
 
 
-def get_models_folder(project_name):
-    project_dir = get_project_folder(project_name)
+def get_models_dir(project_name):
+    project_dir = get_project_dir(project_name)
     model_dir = os.path.join(project_dir, "models")
     return model_dir
 
 
-def get_config_folder(project_name):
-    project_dir = get_project_folder(project_name)
+def get_config_dir(project_name):
+    project_dir = get_project_dir(project_name)
     config_dir = os.path.join(project_dir, "config")
     return config_dir
 
 
-def get_data_folder(project_name):
-    project_dir = get_project_folder(project_name)
+def get_data_dir(project_name):
+    project_dir = get_project_dir(project_name)
     data_dir = os.path.join(project_dir, "data")
     return data_dir
 
 
 def get_config_file(project_name):
-    config_dir = get_config_folder(project_name)
+    config_dir = get_config_dir(project_name)
     config_file = os.path.join(config_dir, "config.yaml")
     return config_file
 
@@ -71,31 +83,32 @@ def get_config_from_project_name(project_name):
 
 def pprint_config(config):
     dict_config = OmegaConf.to_container(config, resolve=True)
+    print("==================== CONFIG ====================")
     print(json.dumps(dict_config, indent=4))
-
+    print("================================================")
 
 def main():
     import sys
 
     command = sys.argv[1]
-    assert command in ["init", "run"], "First argument must be 'init' or 'run'"
+    assert command in ["init", "run", "dataset"], f"Unknown command {command}"
 
     def init_project(project_name):
         try:
-            project_path = create_project_folder(project_name)
-            config_folder = get_config_folder(project_name)
-            os.makedirs(config_folder, exist_ok=True)
+            project_path = create_project_dir(project_name)
+            config_dir = get_config_dir(project_name)
+            os.makedirs(config_dir, exist_ok=True)
 
             # create config dir and
             default_config = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)), "config", "default.yaml"
+                PACKAGE_ROOT, "config", "default_config.yaml"
             )
             config_file = get_config_file(project_name)
             shutil.copy(default_config, config_file)
 
             # create data dir
-            data_folder = get_data_folder(project_name)
-            os.makedirs(data_folder, exist_ok=True)
+            data_dir = get_data_dir(project_name)
+            os.makedirs(data_dir, exist_ok=True)
             print(f"Project '{project_name}' created at {project_path}")
         except OSError as e:
             print(f"Error: {e}")
@@ -106,3 +119,8 @@ def main():
         init_project(project_name)
     elif command == "run":
         pass  # TODO: implement run command
+    elif command == "dataset":
+        args = sys.argv[2:]
+        assert args[0] in ["download", "build"], f"Unknown dataset command {args[0]}"
+    else:
+        raise NotImplementedError(f"Command {command} not implemented")
