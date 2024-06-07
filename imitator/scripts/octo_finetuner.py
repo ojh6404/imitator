@@ -61,16 +61,16 @@ config_flags.DEFINE_config_file(
 
 
 def main(_):
-    initialize_compilation_cache()
-    devices = jax.devices()
+    ############################
+    #                          #
+    # Dump config from project #
+    #                          #
+    ############################
 
     if FLAGS.config.save_dir is None:
         FLAGS.config.save_dir = get_models_dir(FLAGS.project_name)
 
-    # dump imitator config to octo finetuning config
     imitator_config = get_config_from_project_name(FLAGS.project_name)
-
-    # dump obs config
     image_obs_keys = [
         key
         for key in imitator_config.obs.keys()
@@ -102,7 +102,6 @@ def main(_):
         if imitator_config.obs[key].modality == "FloatVectorModality"
     ]
 
-    # dump history and action config
     FLAGS.config.window_size = imitator_config.actions.history
     FLAGS.config.traj_transform_kwargs.action_horizon = imitator_config.actions.horizon
     FLAGS.config.dataset_kwargs.action_normalization_mask = [
@@ -110,6 +109,15 @@ def main(_):
     ] + [
         False
     ]  # avoid normalizing the gripper
+
+    ##############################
+    #                            #
+    # Setup Jax Data Parallelism #
+    #                            #
+    ##############################
+
+    initialize_compilation_cache()
+    devices = jax.devices()
 
     logging.info(
         f"""
@@ -126,12 +134,6 @@ def main(_):
         # Steps: {FLAGS.config.num_steps}
     """
     )
-
-    #########
-    #
-    # Setup Jax Data Parallelism
-    #
-    #########
 
     assert (
         FLAGS.config.batch_size % len(devices) == 0
@@ -150,11 +152,11 @@ def main(_):
     # prevent tensorflow from using GPU memory since it's only used for data loading
     tf.config.set_visible_devices([], "GPU")
 
-    #########
-    #
-    # Setup WandB
-    #
-    #########
+    ###############
+    #             #
+    # Setup WandB #
+    #             #
+    ###############
 
     name = format_name_with_config(
         FLAGS.project_name,
@@ -172,11 +174,11 @@ def main(_):
         **FLAGS.config.wandb,
     )
 
-    #########
-    #
-    # Load Pretrained model + optionally modify config
-    #
-    #########
+    ####################################################
+    #                                                  #
+    # Load Pretrained model + optionally modify config #
+    #                                                  #
+    ####################################################
 
     pretrained_model = OctoModel.load_pretrained(
         FLAGS.config.pretrained_path,
@@ -197,11 +199,11 @@ def main(_):
     config = config.to_dict()
     check_config_diff(config, pretrained_model.config)
 
-    #########
-    #
-    # Setup Data Loader
-    #
-    #########
+    #####################
+    #                   #
+    # Setup Data Loader #
+    #                   #
+    #####################
 
     # create text processor
     if config["text_processor"] is None:
@@ -238,11 +240,11 @@ def main(_):
         readout_key="readout_action",
     )
 
-    #########
-    #
-    # Load Pretrained Model
-    #
-    #########
+    #########################
+    #                       #
+    # Load Pretrained Model #
+    #                       #
+    #########################
 
     rng = jax.random.PRNGKey(FLAGS.config.seed)
     rng, init_rng = jax.random.split(rng)
@@ -257,11 +259,11 @@ def main(_):
     model = model.replace(params=merged_params)
     del pretrained_model
 
-    #########
-    #
-    # Setup Optimizer and Train State
-    #
-    #########
+    ###################################
+    #                                 #
+    # Setup Optimizer and Train State #
+    #                                 #
+    ###################################
 
     params = model.params
     if FLAGS.config.optimizer.frozen_keys is None:
@@ -277,11 +279,11 @@ def main(_):
         rng=rng,
     )
 
-    #########
-    #
-    # Save all metadata
-    #
-    #########
+    #####################
+    #                   #
+    # Save all metadata #
+    #                   #
+    #####################
 
     if FLAGS.config.save_dir is not None:
         save_dir = tf.io.gfile.join(
@@ -318,11 +320,11 @@ def main(_):
         dict(example_batch_spec=example_batch_spec), allow_val_change=True
     )
 
-    #########
-    #
-    # Define loss, train_step, and eval_step
-    #
-    #########
+    ##########################################
+    #                                        #
+    # Define loss, train_step, and eval_step #
+    #                                        #
+    ##########################################
 
     def loss_fn(params, batch, rng, train=True):
         bound_module = model.module.bind({"params": params}, rngs={"dropout": rng})
@@ -366,11 +368,11 @@ def main(_):
         new_state = state.apply_gradients(grads=grads, rng=rng)
         return new_state, info
 
-    #########
-    #
-    # Build validation & visualization callbacks
-    #
-    #########
+    ##############################################
+    #                                            #
+    # Build validation & visualization callbacks #
+    #                                            #
+    ##############################################
 
     if FLAGS.config.modality == "image_conditioned":
         modes_to_evaluate = ["image_conditioned"]
@@ -401,11 +403,11 @@ def main(_):
         **FLAGS.config.viz_kwargs,
     )
 
-    #########
-    #
-    # Optionally build visualizers for sim env evals
-    #
-    #########
+    ##################################################
+    #                                                #
+    # Optionally build visualizers for sim env evals #
+    #                                                #
+    ##################################################
 
     if "rollout_kwargs" in FLAGS.config:
         rollout_callback = RolloutVisualizationCallback(
@@ -416,11 +418,11 @@ def main(_):
     else:
         rollout_callback = None
 
-    #########
-    #
-    # Train loop
-    #
-    #########
+    ##############
+    #            #
+    # Train loop #
+    #            #
+    ##############
 
     def wandb_log(info, step):
         wandb.log(flatten_dict(info, sep="/"), step=step)

@@ -12,6 +12,7 @@ import sys
 import subprocess
 from imitator.utils import PROJECT_ROOT, PACKAGE_ROOT, CACHE_DIR
 
+
 def install_octo():
     os.makedirs(CACHE_DIR, exist_ok=True)
     octo_dir = os.path.join(CACHE_DIR, "octo")
@@ -22,6 +23,7 @@ def install_octo():
     path = os.path.join(CACHE_DIR, "octo")
     sys.path.append(path)
     print("octo installed successfully")
+
 
 def extract_number(name):
     match = re.search(r"\d+", name)
@@ -86,6 +88,7 @@ def pprint_config(config):
     print(json.dumps(dict_config, indent=4))
     print("================================================")
 
+
 def main():
     import sys
 
@@ -99,9 +102,7 @@ def main():
             os.makedirs(config_dir, exist_ok=True)
 
             # create config dir and
-            default_config = os.path.join(
-                PACKAGE_ROOT, "config", "default_config.yaml"
-            )
+            default_config = os.path.join(PACKAGE_ROOT, "config", "default_config.yaml")
             config_file = get_config_file(project_name)
             shutil.copy(default_config, config_file)
 

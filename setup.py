@@ -1,5 +1,6 @@
 from setuptools import setup
 
+
 def _post_install():
     import os
 
