@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 def _post_install():
@@ -12,16 +12,13 @@ def _post_install():
 
 setup(
     name="imitator",
-    packages=["imitator"],
+    packages=find_packages(),
     install_requires=[
-        "numpy",
-        "scipy",
-        "pyquaternion",
+        "numpy>=1.25.0",
+        "scipy>=1.13.0",
         "opencv-python",
-        "h5py",
         "psutil",
         "tqdm",
-        "termcolor",
         "imageio",
         "imageio-ffmpeg",
         "gymnasium",
@@ -31,28 +28,29 @@ setup(
         "omegaconf",
         "moviepy",
         "plotly",
+        "matplotlib",
+        "h5py",
     ],
     extras_require={
         "cuda": [
-            "tensorboard",
-            "tensorboardX",
             "wandb",
-            "dlimp@git+https://github.com/ojh6404/dlimp.git",
-            "matplotlib",
-            "jax",
-            "flax",
-            "optax",
-            "orbax",
-            "distrax",
-            "chex",
-            "clu",
-            "tensorflow-datasets",
-            "tensorflow[and-cuda]",
-            "tensorflow_hub",
-            "tensorflow_text",
-            "huggingface_hub",
-            "transformers",
-            "einops",
+            "jax>=0.4.20",
+            "flax>=0.7.5",
+            "optax>=0.1.5",
+            "orbax>=0.1.9",
+            "distrax>=0.1.5",
+            "chex>=0.1.85",
+            "clu>=0.0.12",
+            "tensorflow==2.15.0",
+            "tensorflow_probability==0.23.0",
+            "tensorflow_hub>=0.14.0",
+            "tensorflow_text>=2.13.0",
+            "tensorflow-datasets>=4.9.2",
+            "tensorflow_graphics==2021.12.3",
+            "transformers>=4.34.1",
+            "huggingface_hub>=0.23.3",
+            "einops>=0.6.1",
+            "dlimp@git+https://github.com/kvablack/dlimp.git",
         ],
         "dev": [
             "pytest",
@@ -67,7 +65,9 @@ setup(
             "ipywidgets",
             "nbdev",
         ],
-        "sim": ["robosuite", "minari", "gymnasium-robotics"],
+        "test": [
+            "h5py",
+        ]
     },
     eager_resources=["*"],
     include_package_data=True,

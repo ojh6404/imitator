@@ -101,10 +101,15 @@ def main():
             config_dir = get_config_dir(project_name)
             os.makedirs(config_dir, exist_ok=True)
 
-            # create config dir and
-            default_config = os.path.join(PACKAGE_ROOT, "config", "default_config.yaml")
+            # create config dir and copy default config
+            default_config = os.path.join(PACKAGE_ROOT, "config", "default.yaml")
             config_file = get_config_file(project_name)
             shutil.copy(default_config, config_file)
+
+            # copy default train config
+            default_train_config = os.path.join(PACKAGE_ROOT, "config", "train_config.py")
+            train_config_file = os.path.join(config_dir, "train_config.py")
+            shutil.copy(default_train_config, train_config_file)
 
             # create data dir
             data_dir = get_data_dir(project_name)
