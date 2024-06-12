@@ -4,12 +4,12 @@ import numpy as np
 import cv2
 import tensorflow_datasets as tfds
 import h5py
-from imitator.utils.file_utils import get_config_from_project_name, get_data_hdf5, extract_number
+from imitator.utils.file_utils import get_config_from_project_name, extract_number, get_data_dir
 
 project_name = os.environ.get("PROJECT_NAME", "imitator")
 dataset = os.environ.get("DATASET", "dataset.hdf5")
 imitator_config = get_config_from_project_name(project_name)
-hdf5_path = get_data_hdf5(project_name, dataset)
+hdf5_path = os.path.join(get_data_dir(project_name), dataset)
 obs_keys = list(imitator_config.obs.keys())
 
 print(f"Building TFDS dataset for project: {project_name}, dataset: {hdf5_path}")
