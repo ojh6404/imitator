@@ -1,20 +1,28 @@
+import sys
 from setuptools import setup, find_packages
 
-
-def _post_install():
-    import os
-
-    PROJECT_ROOT = os.path.expanduser("~/.imitator")
-    os.makedirs(PROJECT_ROOT, exist_ok=True)
-    CACHE_DIR = os.path.expanduser("~/.cache/imitator")
-    os.makedirs(CACHE_DIR, exist_ok=True)
-
-
-setup(
-    name="imitator",
-    packages=find_packages(),
-    install_requires=[
-        "numpy>=1.24.0",
+if sys.version_info < (3, 11): # for python 3.8 ~ 3.10
+    install_requires = [
+        "numpy",
+        "scipy",
+        "opencv-python",
+        "psutil",
+        "tqdm",
+        "imageio",
+        "imageio-ffmpeg",
+        "gymnasium",
+        "absl-py",
+        "Pillow",
+        "ml-collections",
+        "omegaconf",
+        "moviepy",
+        "plotly",
+        "matplotlib",
+        "h5py",
+    ]
+else: # for python 3.11
+    install_requires = [
+        "numpy>=1.25.0",
         "scipy>=1.13.0",
         "opencv-python",
         "psutil",
@@ -30,7 +38,22 @@ setup(
         "plotly",
         "matplotlib",
         "h5py",
-    ],
+    ]
+
+
+def _post_install():
+    import os
+
+    PROJECT_ROOT = os.path.expanduser("~/.imitator")
+    os.makedirs(PROJECT_ROOT, exist_ok=True)
+    CACHE_DIR = os.path.expanduser("~/.cache/imitator")
+    os.makedirs(CACHE_DIR, exist_ok=True)
+
+
+setup(
+    name="imitator",
+    packages=find_packages(),
+    install_requires=install_requires,
     extras_require={
         "cuda": [
             "wandb",
