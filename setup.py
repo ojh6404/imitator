@@ -14,7 +14,7 @@ setup(
     name="imitator",
     packages=find_packages(),
     install_requires=[
-        "numpy>=1.25.0",
+        "numpy>=1.24.0",
         "scipy>=1.13.0",
         "opencv-python",
         "psutil",
