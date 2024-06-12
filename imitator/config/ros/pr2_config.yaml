@@ -26,6 +26,8 @@ obs:
 actions:
   type: "action_trajectory"
   dim: 7 # x,y,z,roll,pitch,yaw,gripper
+  history: 2
+  horizon: 4
   topic_name: "/eus_imitation/robot_action"
   msg_type: "FloatVector"
   modality: "FloatVectorModality"
