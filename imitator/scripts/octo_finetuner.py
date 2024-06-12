@@ -232,13 +232,37 @@ def main(_):
     train_data_iter = map(process_batch, train_data_iter)
     example_batch = next(train_data_iter)
 
-    # override action head with new action head TODO
-    config["model"]["heads"]["action"] = ModuleSpec.create(
-        L1ActionHead,
-        action_horizon=FLAGS.config.traj_transform_kwargs.action_horizon,
-        action_dim=example_batch["action"].shape[-1],
-        readout_key="readout_action",
-    )
+    # override action head with new action head when action_horizon and action_dim is different
+    if "action" in config["model"]["heads"]:
+        logging.info("Action heads found in config")
+        if (
+            config["model"]["heads"]["action"]["kwargs"]["action_horizon"]
+            != FLAGS.config.traj_transform_kwargs.action_horizon
+            or config["model"]["heads"]["action"]["kwargs"]["action_dim"]
+            != example_batch["action"].shape[-1]
+        ):
+            logging.info(
+                "Overriding action head with new action head with action_horizon=%d, action_dim=%d",
+                FLAGS.config.traj_transform_kwargs.action_horizon,
+                example_batch["action"].shape[-1],
+            )
+            del config["model"]["heads"]["action"]
+            config["model"]["heads"]["action"] = ModuleSpec.create(
+                L1ActionHead,
+                action_horizon=FLAGS.config.traj_transform_kwargs.action_horizon,
+                action_dim=example_batch["action"].shape[-1],
+                readout_key="readout_action",
+            )
+        else:
+            logging.info("Use existing action head.")
+    else:
+        logging.info("No action heads found in config. Creating new action head.")
+        config["model"]["heads"]["action"] = ModuleSpec.create(
+            L1ActionHead,
+            action_horizon=FLAGS.config.traj_transform_kwargs.action_horizon,
+            action_dim=example_batch["action"].shape[-1],
+            readout_key="readout_action",
+        )
 
     #########################
     #                       #
