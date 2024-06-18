@@ -107,7 +107,9 @@ def main():
             shutil.copy(default_config, config_file)
 
             # copy default train config
-            default_train_config = os.path.join(PACKAGE_ROOT, "config", "train_config.py")
+            default_train_config = os.path.join(
+                PACKAGE_ROOT, "config", "train_config.py"
+            )
             train_config_file = os.path.join(config_dir, "train_config.py")
             shutil.copy(default_train_config, train_config_file)
 
