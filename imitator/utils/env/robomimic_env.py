@@ -109,6 +109,9 @@ class RoboMimicEnv(Wrapper, gym.Env):
         ob_dict = self.env.reset()
         ob_dict["object"] = ob_dict["object-state"]
         del ob_dict["object-state"]
+        for key in ob_dict.keys():
+            if "image" in key:
+                ob_dict[key] = ob_dict[key][::-1] # flip image
         info = {}  # TODO
         if self.render_mode == "human":
             self.env.render()
@@ -131,6 +134,8 @@ class RoboMimicEnv(Wrapper, gym.Env):
                 - (dict) misc information
         """
         ob_dict, reward, terminated, info = self.env.step(action)
+        if reward > 0: # success
+            terminated = True
 
         # rename object-state to object
         ob_dict["object"] = ob_dict["object-state"]
@@ -139,7 +144,7 @@ class RoboMimicEnv(Wrapper, gym.Env):
         # flip image obs
         for key in ob_dict.keys():
             if "image" in key:
-                ob_dict[key] = ob_dict[key][::-1]  # RGB
+                ob_dict[key] = ob_dict[key][::-1]  # flip image
 
         if self.render_mode == "human":
             self.env.render()
