@@ -11,8 +11,8 @@ from safetensors.torch import save_file
 from lerobot.common.datasets.compute_stats import compute_stats
 from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.common.datasets.utils import flatten_dict
-from lerobot.common.datasets.push_dataset_to_hub.robomimic_hdf5_format import from_raw_to_lerobot_format
 
+from imitator.data.hdf5_format_to_lerobot import from_raw_to_lerobot_format
 from imitator.utils.file_utils import get_config_from_project_name, get_data_dir
 
 def save_meta_data(
@@ -80,7 +80,7 @@ def main():
         "--project-name",
         type=Path,
         required=True,
-        help="Directory containing input raw datasets (e.g. `data/aloha_mobile_chair_raw` or `data/pusht_raw).",
+        help="Name of the project to build the dataset from.",
     )
     parser.add_argument(
         "--video",
