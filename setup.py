@@ -2,7 +2,7 @@ import os
 import sys
 from setuptools import setup, find_packages
 
-if sys.version_info < (3, 11):  # for python 3.8 ~ 3.10
+if sys.version_info < (3, 9):  # for python <3.9
     install_requires = [
         "numpy",
         "scipy",
@@ -31,9 +31,9 @@ if sys.version_info < (3, 11):  # for python 3.8 ~ 3.10
         "rerun-sdk>=0.15.1",
         "deepdiff>=7.0.1",
     ]
-else:  # for python 3.11
+else:  # for python >=3.9
     install_requires = [
-        "numpy>=1.25.0",
+        "numpy>=1.24.0,<2.0.0",
         "scipy>=1.13.0",
         "opencv-python>=4.9.0",
         "psutil",
